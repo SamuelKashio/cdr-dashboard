@@ -189,30 +189,34 @@ def procesar_cdrs(df_raw):
         if col in df.columns:
             df[col] = pd.to_datetime(df[col].replace("", None), errors="coerce")
 
-    # Resolver nombre del agente receptor
-    df["agente_nombre"] = df["name_endpoint_dnis"].fillna("").replace("", None)
-    df.loc[df["agente_nombre"].isna(), "agente_nombre"] = df.loc[df["agente_nombre"].isna(), "dnis_user"].map(AGENTES)
-    df["agente_nombre"] = df["agente_nombre"].fillna("Desconocido")
-
-    # Resolver nombre del agente origen
-    df["caller_nombre"] = df["name_endpoint_ani"].fillna("").replace("", None)
-    df.loc[df["caller_nombre"].isna(), "caller_nombre"] = df.loc[df["caller_nombre"].isna(), "ani_user"].map(AGENTES)
+    # ── Identificar agente por dnis_user (campo confiable) ─────────────────────
+    # name_endpoint_dnis puede decir "Central_Virtual" incluso cuando el agente que
+    # contestó es otro. dnis_user contiene el ID real del endpoint (8668109, 8668110, etc.)
+    df["agente_dnis"] = df["dnis_user"].astype(str).map(AGENTES)       # quién recibe
+    df["agente_ani"]  = df["ani_user"].astype(str).map(AGENTES)        # quién llama
+    # Para salientes: el agente es el que origina (ani_user)
+    df["agente_nombre"] = df["agente_dnis"].fillna(df["agente_ani"]).fillna("Externo")
 
     # ── VISTA DETALLE: todos los registros (para tabla de intentos)
     df_all = df.copy()
 
-    # ── VISTA LLAMADAS ÚNICAS: agrupar por original_callid
-    # Para cada llamada única tomamos el registro "padre" (ref_callid == "0" o el que tiene mayor duration)
+    # ── VISTA LLAMADAS ÚNICAS: agrupar por original_callid ─────────────────────
     if "original_callid" not in df.columns:
         return df_all, df_all
 
-    # Separar registros padre (ref_callid == 0 o "0") de intentos de ring
     df["ref_callid"] = df["ref_callid"].astype(str).str.strip()
     df_padres = df[df["ref_callid"] == "0"].copy()
 
-    # Para cada original_callid, encontrar si algún intento fue atendido
-    atendidas = df[df["duration"] > 0].groupby("original_callid").agg(
-        agente_atendio=("agente_nombre", "first"),
+    # Registros con duration > 0 Y dnis_user es un agente conocido = llamada atendida por ese agente
+    agentes_ids = set(AGENTES.keys())
+    df["es_agente_dnis"] = df["dnis_user"].astype(str).isin(agentes_ids)
+
+    atendidas_mask = (df["duration"] > 0) & df["es_agente_dnis"]
+    df_atendidas = df[atendidas_mask].copy()
+    df_atendidas["agente_real"] = df_atendidas["dnis_user"].astype(str).map(AGENTES)
+
+    atendidas = df_atendidas.groupby("original_callid").agg(
+        agente_atendio=("agente_real", "first"),
         duracion_real=("duration", "max"),
         connect_time_real=("connect_time", "first"),
     ).reset_index()
@@ -505,40 +509,41 @@ with tab2:
     if "agente_atendio" not in llamadas.columns:
         st.info("No hay datos de agentes en este período.")
     else:
-        # Stats por agente (excluir "No atendida" y "Central Virtual" del conteo de atención)
+        # Stats por agente — usa df_all (registros raw) para cruzar por dnis_user (ID real)
         ag_stats = []
         for aid, nombre in AGENTES.items():
             if nombre == "Central Virtual":
                 continue
+
+            # Llamadas atendidas: agente_atendio viene de dnis_user mapeado
             atendidas_ag = llamadas[
                 (llamadas["agente_atendio"] == nombre) & (llamadas["atendida"] == True)
             ]
             n_atendidas = len(atendidas_ag)
-            dur_ag = atendidas_ag["duracion_real"].tolist()
-            avg_d  = int(sum(dur_ag)/len(dur_ag)) if dur_ag else 0
-            total_d = int(sum(dur_ag)/60)
+            dur_ag  = atendidas_ag["duracion_real"].dropna().tolist()
+            avg_d   = int(sum(dur_ag) / len(dur_ag)) if dur_ag else 0
+            total_d = int(sum(dur_ag) / 60)
+            espera_ag = atendidas_ag["total_ring"].dropna().tolist() if "total_ring" in atendidas_ag.columns else []
+            avg_esp = int(sum(espera_ag) / len(espera_ag)) if espera_ag else 0
 
-            # Llamadas que fueron routed a este agente pero no atendió
-            no_atendidas_ag = llamadas[
-                (llamadas.get("dnis_user", llamadas.get("agente_nombre", "")) == aid) &
-                (llamadas["atendida"] == False)
-            ] if "dnis_user" in llamadas.columns else pd.DataFrame()
-
-            # Salientes
-            sal = llamadas[
-                (llamadas["type"] == "outgoing") &
-                (llamadas["ani_user"] == aid)
-            ] if "ani_user" in llamadas.columns and "type" in llamadas.columns else pd.DataFrame()
-
-            espera_ag = atendidas_ag["total_ring"].tolist() if "total_ring" in atendidas_ag.columns else []
-            avg_esp = int(sum(espera_ag)/len(espera_ag)) if espera_ag else 0
+            # Salientes y rebotes usando df_all (todos los registros, no deduplicados)
+            sal, no_at = 0, 0
+            if df_all is not None and not df_all.empty:
+                if "type" in df_all.columns and "ani_user" in df_all.columns:
+                    sal = int(((df_all["type"] == "outgoing") &
+                               (df_all["ani_user"].astype(str) == str(aid)) &
+                               (df_all["duration"] > 0)).sum())
+                if "dnis_user" in df_all.columns:
+                    routed = df_all[df_all["dnis_user"].astype(str) == str(aid)]
+                    no_at  = int((routed["duration"] == 0).sum())
 
             ag_stats.append({
                 "id": aid, "nombre": nombre,
                 "atendidas": n_atendidas,
+                "no_at_ring": no_at,
                 "avg_dur": avg_d,
                 "total_min": total_d,
-                "salientes": len(sal),
+                "salientes": sal,
                 "avg_espera": avg_esp,
             })
 
@@ -564,6 +569,7 @@ with tab2:
                         <span>⏱ {fmt_dur(ag['avg_dur'])}</span>
                         <span>⏳ {fmt_dur(ag['avg_espera'])} espera</span>
                         <span>📞 {ag['salientes']} sal.</span>
+                        <span>🔁 {ag['no_at_ring']} rebotes</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
