@@ -151,65 +151,96 @@ div[data-testid="stSelectbox"] select { background: #0C0F1C !important; }
 """, unsafe_allow_html=True)
 
 
-# ─── API con paginación ───────────────────────────────────────────────────────
-PAGE_SIZE = 1000   # registros por página
+# ─── API con paginación por chunks de días ────────────────────────────────────
+PAGE_SIZE  = 1000   # registros por request
+CHUNK_DAYS = 10     # días por chunk — evita timeout por volumen de datos
 
-def _fetch_page(params, ini):
-    """Trae una página de resultados."""
-    p = {**params, "ini": ini, "cant": PAGE_SIZE}
-    r = requests.get("https://callmyway.com/getCdrs.php", params=p, timeout=30)
-    r.raise_for_status()
-    data = r.json()
-    if isinstance(data, dict) and "error" in data:
-        raise ValueError(data["error"])
-    cdrs = data.get("cdrs", data) if isinstance(data, dict) else data
-    return cdrs if cdrs else []
+def _fetch_chunk(username, password, date_start, date_end):
+    """Descarga todos los registros de un rango corto, paginando si supera PAGE_SIZE."""
+    base = {"username": username, "password": password, "format": "json",
+            "dateStart": date_start, "dateEnd": date_end}
+    all_cdrs, ini = [], 0
+    while True:
+        params = {**base, "ini": ini, "cant": PAGE_SIZE}
+        r = requests.get("https://callmyway.com/getCdrs.php", params=params, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        if isinstance(data, dict) and "error" in data:
+            raise ValueError(data["error"])
+        page = data.get("cdrs", data) if isinstance(data, dict) else data
+        if not page:
+            break
+        all_cdrs.extend(page)
+        if len(page) < PAGE_SIZE:
+            break
+        ini += PAGE_SIZE
+    return all_cdrs
 
 def fetch_cdrs(username, password, date_start=None, date_end=None, recent=False, live=False,
                progress_cb=None):
     """
-    Descarga CDRs con paginación automática para evitar timeouts en rangos grandes.
-    progress_cb(pct, msg): callback opcional para mostrar progreso.
+    Descarga CDRs dividiendo rangos grandes en chunks de CHUNK_DAYS días.
+    Soporta rangos de meses o años sin timeout.
+    progress_cb(pct, msg): callback opcional de progreso.
     """
-    base_params = {"username": username, "password": password, "format": "json"}
-
     if live:
-        base_params.update({"live": 1, "fullAccount": 1})
         try:
-            cdrs = _fetch_page(base_params, 0)
-            return pd.DataFrame(cdrs), None
+            r = requests.get("https://callmyway.com/getCdrs.php",
+                params={"username":username,"password":password,"live":1,"fullAccount":1,"format":"json"},
+                timeout=20)
+            r.raise_for_status()
+            data = r.json()
+            cdrs = data.get("cdrs", data) if isinstance(data, dict) else data
+            return pd.DataFrame(cdrs or []), None
         except Exception as e:
             return None, str(e)
 
     if recent:
-        base_params["recent"] = 1
         try:
-            cdrs = _fetch_page(base_params, 0)
-            return pd.DataFrame(cdrs), None
+            r = requests.get("https://callmyway.com/getCdrs.php",
+                params={"username":username,"password":password,"recent":1,"format":"json"},
+                timeout=20)
+            r.raise_for_status()
+            data = r.json()
+            cdrs = data.get("cdrs", data) if isinstance(data, dict) else data
+            return pd.DataFrame(cdrs or []), None
         except Exception as e:
             return None, str(e)
 
-    # Histórico con paginación
-    base_params.update({"dateStart": date_start, "dateEnd": date_end})
-    all_cdrs = []
-    ini = 0
+    # Histórico — dividir en chunks
     try:
-        while True:
-            page = _fetch_page(base_params, ini)
-            if not page:
-                break
-            all_cdrs.extend(page)
-            if progress_cb:
-                progress_cb(min(ini / max(len(all_cdrs), 1), 0.95),
-                            f"Descargando… {len(all_cdrs):,} registros")
-            if len(page) < PAGE_SIZE:
-                break   # última página
-            ini += PAGE_SIZE
-        return (pd.DataFrame(all_cdrs) if all_cdrs else pd.DataFrame()), None
+        dt_ini = datetime.strptime(date_start, "%Y-%m-%d %H:%M:%S")
+        dt_fin = datetime.strptime(date_end,   "%Y-%m-%d %H:%M:%S")
     except Exception as e:
-        if all_cdrs:   # devolver lo que tenemos aunque haya fallado en alguna página
-            return pd.DataFrame(all_cdrs), None
-        return None, str(e)
+        return None, f"Fechas inválidas: {e}"
+
+    # Generar lista de chunks
+    chunks, cursor = [], dt_ini
+    while cursor < dt_fin:
+        chunk_end = min(cursor + timedelta(days=CHUNK_DAYS), dt_fin)
+        chunks.append((cursor, chunk_end))
+        cursor = chunk_end
+    total_chunks = len(chunks)
+
+    all_cdrs = []
+    for i, (c_ini, c_fin) in enumerate(chunks):
+        ds = c_ini.strftime("%Y-%m-%d %H:%M:%S")
+        de = c_fin.strftime("%Y-%m-%d %H:%M:%S")
+        pct = i / total_chunks
+        if progress_cb:
+            progress_cb(pct, f"Chunk {i+1}/{total_chunks} · {c_ini.strftime('%d/%m')}→{c_fin.strftime('%d/%m')} · {len(all_cdrs):,} registros")
+        try:
+            page = _fetch_chunk(username, password, ds, de)
+            all_cdrs.extend(page)
+        except Exception as e:
+            # Si un chunk falla, continuar con los demás
+            if progress_cb:
+                progress_cb(pct, f"⚠ Chunk {i+1} con error, continuando…")
+
+    if progress_cb:
+        progress_cb(1.0, f"Completado · {len(all_cdrs):,} registros totales")
+
+    return (pd.DataFrame(all_cdrs) if all_cdrs else pd.DataFrame()), None
 
 
 # ─── Motor de procesamiento ───────────────────────────────────────────────────
@@ -728,18 +759,10 @@ with tab_ag:
         n_sal_ag = len(sal_ag)
         n_sal_ok_ag = int((sal_ag["atendida"]==True).sum()) if not sal_ag.empty else 0
 
-        # Rebotes (timbreó pero no contestó) — desde df_raw
-        rebotes = 0
-        if df_raw is not None and not df_raw.empty and "dnis_user" in df_raw.columns:
-            rebotes = int(((df_raw["dnis_user"].astype(str) == str(aid)) &
-                           (df_raw["type"] == "incoming") &
-                           (df_raw["duration"] == 0)).sum())
-
         ag_data.append({
             "id": aid, "nombre": nombre,
             "ent_atendidas": n_at, "avg_dur": avg_d, "total_min": total_min_ag,
             "avg_espera": avg_e, "salientes": n_sal_ag,
-            "sal_ok": n_sal_ok_ag, "rebotes": rebotes,
                 "per_turno": len(df_ent[(df_ent.get("responsable","") == nombre) & (df_ent.get("atendida",False)==False)]) if not df_ent.empty and "responsable" in df_ent.columns else 0,
         })
 
@@ -750,7 +773,7 @@ with tab_ag:
     for i, ag in enumerate(ag_data):
         with cols3[i % 3]:
             rank = ["🥇","🥈","🥉"][i] if i < 3 else f"#{i+1}"
-            total_act = ag["ent_atendidas"] + ag["rebotes"]
+            total_act = ag["ent_atendidas"] + ag["per_turno"]
             pct_ag = round(ag["ent_atendidas"]/total_act*100) if total_act else 0
             bar_color = "#22C55E" if pct_ag >= 70 else "#F59E0B" if pct_ag >= 40 else "#EF4444"
             st.markdown(f"""
@@ -780,8 +803,8 @@ with tab_ag:
                   <div style='color:#7A9ABA;margin-top:2px'>{ag['salientes']}</div>
                 </div>
                 <div style='background:rgba(255,255,255,0.03);border-radius:6px;padding:6px;text-align:center'>
-                  <div style='color:#1A3050;font-size:9px;letter-spacing:0.5px'>REBOTES</div>
-                  <div style='color:#7A9ABA;margin-top:2px'>{ag['rebotes']}</div>
+                  <div style='color:#1A3050;font-size:9px;letter-spacing:0.5px'>PERD. TURNO</div>
+                  <div style='color:#EF4444;margin-top:2px'>{ag['per_turno']}</div>
                 </div>
               </div>
               <div style='margin-top:8px;display:flex;justify-content:space-between;font-size:10px;font-family:JetBrains Mono,monospace'>
@@ -801,8 +824,6 @@ with tab_ag:
             fig_cmp.add_trace(go.Bar(name="Atendidas", x=df_ag_plot["nombre"], y=df_ag_plot["ent_atendidas"],
                 marker_color="#166534", marker_line_width=0))
             fig_cmp.add_trace(go.Bar(name="Salientes", x=df_ag_plot["nombre"], y=df_ag_plot["salientes"],
-                marker_color="#1D4ED8", marker_line_width=0))
-            fig_cmp.add_trace(go.Bar(name="Rebotes", x=df_ag_plot["nombre"], y=df_ag_plot["rebotes"],
                 marker_color="#4A0404", marker_line_width=0))
             fig_cmp.update_layout(height=280, barmode="group", **P,
                 xaxis_title="", yaxis=dict(gridcolor="rgba(255,255,255,0.03)",title=""),
