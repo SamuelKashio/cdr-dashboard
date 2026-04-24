@@ -1,411 +1,359 @@
-"""
-Dashboard de Monitoreo PBX — CallMyWay
-Ejecutar con:
-    pip install streamlit pandas requests plotly
-    streamlit run app.py
-"""
-
 import streamlit as st
 import pandas as pd
 import requests
 import plotly.express as px
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo  # Python 3.9+
 
-# ──────────────────────────────────────────────
-# CREDENCIALES
-# ──────────────────────────────────────────────
+# =============================================================================
+# CONFIGURACIÓN GLOBAL
+# =============================================================================
+API_BASE_URL = "https://callmyway.com/getCdrs.php"
+API_BASE_URL_LIVE = "https://www.callmyway.com/getCdrs.php"
+
+# Credenciales hardcodeadas
 USERNAME = "8668334"
 PASSWORD = "28719014429"
-BASE_URL  = "https://callmyway.com/getCdrs.php"
-TZ        = ZoneInfo("America/Lima")
 
-# ──────────────────────────────────────────────
-# MAPA DE AGENTES  endpoint -> nombre legible
-# ──────────────────────────────────────────────
-AGENTS = {
-    "8668106": "Central Virtual",
+# Mapeo de agentes (Endpoint -> Nombre)
+AGENTES = {
+    "8668106": "Central_Virtual",
     "8668109": "Edwin Loyola",
-    "8668110": "Jose L. Cahuana",
+    "8668110": "Jose Luis Cahuana",
     "8668112": "Daniel Huayta",
     "8668111": "Deivy Chavez",
     "8668114": "Joe Villanueva",
-    "8672537": "Victor Figueroa",
+    "8672537": "Victor Figueroa"
 }
 
-STATUS_COLORS = {
-    "ANSWERED":  "#1D9E75",
-    "NO ANSWER": "#EF9F27",
-    "BUSY":      "#E24B4A",
-    "FAILED":    "#888780",
-}
+# Nombres esperados de columnas en el JSON de la API
+COL_DURATION = "duration"          # Duración en segundos
+COL_AGENT = "src"                  # Extensión/agente origen
+COL_STATUS = "disposition"         # Estado de la llamada (Answered, Busy, No Answer, etc.)
+COL_CALLER_ID = "caller_id"
+COL_DST = "dst"
+COL_START_TIME = "start_time"
+COL_ANSWER_TIME = "answer_time"
+COL_END_TIME = "end_time"
 
-# ──────────────────────────────────────────────
-# COLUMNAS ESPERADAS DE LA API
-# ──────────────────────────────────────────────
-COL_DURATION = "duration"
-COL_BILLSEC  = "billsec"
-COL_AGENT    = "src"
-COL_DST      = "dst"
-COL_STATUS   = "disposition"
-COL_CALLDATE = "calldate"
-COL_CLID     = "clid"
-
-
-# ══════════════════════════════════════════════
-# HELPERS API
-# ══════════════════════════════════════════════
-
-def _parse_response(data) -> pd.DataFrame:
-    """Normaliza cualquier estructura JSON de la API a un DataFrame."""
-    if isinstance(data, list):
-        return pd.DataFrame(data) if data else pd.DataFrame()
-    if isinstance(data, dict):
-        for key in ("data", "cdrs", "records", "calls", "result"):
-            if isinstance(data.get(key), list):
-                return pd.DataFrame(data[key]) if data[key] else pd.DataFrame()
-        if data:
-            return pd.DataFrame([data])
-    return pd.DataFrame()
-
-
-@st.cache_data(ttl=30, show_spinner=False)
-def fetch_live_calls() -> pd.DataFrame:
-    url = (f"{BASE_URL}?username={USERNAME}&password={PASSWORD}"
-           f"&live=1&fullAccount=1&format=json")
+# =============================================================================
+# FUNCIONES DE CONSUMO DE API
+# =============================================================================
+def fetch_cdrs_history(date_start, date_end, offset=0, limit=5000):
+    """
+    Obtiene CDRs históricos por rango de fechas con paginación.
+    Retorna un DataFrame de pandas o None si hay error.
+    """
+    params = {
+        "username": USERNAME,
+        "password": PASSWORD,
+        "dateStart": date_start,
+        "dateEnd": date_end,
+        "ini": offset,
+        "cant": limit,
+        "format": "json"
+    }
     try:
-        r = requests.get(url, timeout=15)
-        r.raise_for_status()
-        return _parse_response(r.json())
+        response = requests.get(API_BASE_URL, params=params, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, list):
+            return pd.DataFrame(data)
+        elif isinstance(data, dict) and "data" in data:
+            return pd.DataFrame(data["data"])
+        else:
+            st.error("Formato de respuesta inesperado en histórico.")
+            return None
     except Exception as e:
-        st.warning(f"No se pudo obtener llamadas en vivo: {e}")
+        st.error(f"Error al consultar histórico: {e}")
+        return None
+
+def fetch_cdrs_live():
+    """
+    Obtiene CDRs de llamadas en vivo.
+    Retorna un DataFrame de pandas o None si hay error o no hay datos.
+    """
+    params = {
+        "username": USERNAME,
+        "password": PASSWORD,
+        "live": 1,
+        "fullAccount": 1,
+        "format": "json"
+    }
+    try:
+        response = requests.get(API_BASE_URL_LIVE, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, list):
+            return pd.DataFrame(data)
+        elif isinstance(data, dict) and "data" in data:
+            return pd.DataFrame(data["data"])
+        else:
+            # Puede que devuelva un objeto vacío o mensaje
+            if not data:
+                return pd.DataFrame()
+            return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"Error al consultar llamadas en vivo: {e}")
+        return None
+
+# =============================================================================
+# FUNCIONES DE PROCESAMIENTO Y MÉTRICAS
+# =============================================================================
+def safe_float_convert(series):
+    """Convierte una serie a numérico, forzando errores a NaN."""
+    return pd.to_numeric(series, errors='coerce')
+
+def calculate_metrics(df):
+    """
+    Calcula KPIs a partir del DataFrame de CDRs.
+    Retorna un diccionario con las métricas.
+    """
+    if df.empty:
+        return {
+            "total_calls": 0,
+            "total_duration_min": 0.0,
+            "avg_duration_sec": 0.0,
+            "asr": 0.0
+        }
+    
+    total_calls = len(df)
+    
+    # Duración total (segundos) -> minutos
+    if COL_DURATION in df.columns:
+        durations = safe_float_convert(df[COL_DURATION])
+        total_duration_sec = durations.sum()
+        total_duration_min = total_duration_sec / 60.0
+        avg_duration_sec = durations.mean()
+    else:
+        total_duration_min = 0.0
+        avg_duration_sec = 0.0
+    
+    # ASR: Llamadas contestadas / total
+    if COL_STATUS in df.columns:
+        answered = df[df[COL_STATUS].astype(str).str.lower() == "answered"].shape[0]
+        asr = (answered / total_calls * 100) if total_calls > 0 else 0.0
+    else:
+        asr = 0.0
+    
+    return {
+        "total_calls": total_calls,
+        "total_duration_min": round(total_duration_min, 2),
+        "avg_duration_sec": round(avg_duration_sec, 2),
+        "asr": round(asr, 2)
+    }
+
+def enrich_agent_names(df):
+    """Añade columna con nombre legible del agente basado en el mapeo."""
+    if COL_AGENT in df.columns:
+        df["agent_name"] = df[COL_AGENT].astype(str).map(AGENTES)
+        # Los que no tengan mapeo conservan el número original
+        df["agent_name"] = df["agent_name"].fillna(df[COL_AGENT].astype(str))
+    return df
+
+def get_top_agents(df, top_n=10):
+    """Retorna DataFrame con top N agentes por volumen de llamadas."""
+    if df.empty or COL_AGENT not in df.columns:
         return pd.DataFrame()
+    
+    agent_counts = df[COL_AGENT].value_counts().reset_index()
+    agent_counts.columns = [COL_AGENT, "total_calls"]
+    agent_counts = agent_counts.head(top_n)
+    # Añadir nombre legible
+    agent_counts["agent_name"] = agent_counts[COL_AGENT].astype(str).map(AGENTES)
+    agent_counts["agent_name"] = agent_counts["agent_name"].fillna(agent_counts[COL_AGENT].astype(str))
+    return agent_counts
 
+def get_agent_summary(df):
+    """
+    Retorna DataFrame agrupado por agente con:
+    Total llamadas, Duración Total (min), Duración Promedio (seg)
+    """
+    if df.empty or COL_AGENT not in df.columns:
+        return pd.DataFrame()
+    
+    # Asegurar duración numérica
+    if COL_DURATION in df.columns:
+        df["_duration_num"] = safe_float_convert(df[COL_DURATION])
+    else:
+        df["_duration_num"] = 0
+    
+    summary = df.groupby(COL_AGENT).agg(
+        total_calls=(COL_AGENT, 'count'),
+        total_duration_sec=('_duration_num', 'sum')
+    ).reset_index()
+    
+    summary["total_duration_min"] = summary["total_duration_sec"] / 60.0
+    summary["avg_duration_sec"] = summary.apply(
+        lambda row: row["total_duration_sec"] / row["total_calls"] if row["total_calls"] > 0 else 0,
+        axis=1
+    )
+    # Redondeos
+    summary["total_duration_min"] = summary["total_duration_min"].round(2)
+    summary["avg_duration_sec"] = summary["avg_duration_sec"].round(2)
+    
+    # Agregar nombre legible
+    summary["agent_name"] = summary[COL_AGENT].astype(str).map(AGENTES)
+    summary["agent_name"] = summary["agent_name"].fillna(summary[COL_AGENT].astype(str))
+    
+    # Ordenar por total de llamadas descendente
+    summary = summary.sort_values("total_calls", ascending=False)
+    
+    # Seleccionar columnas finales
+    return summary[[COL_AGENT, "agent_name", "total_calls", "total_duration_min", "avg_duration_sec"]]
 
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_historic(date_start: str, date_end: str, limit: int = 5000) -> pd.DataFrame:
-    all_rows, offset, page_size = [], 0, min(500, limit)
-    prog = st.progress(0, text="Descargando registros...")
-    while len(all_rows) < limit:
-        batch = min(page_size, limit - len(all_rows))
-        url = (f"{BASE_URL}?username={USERNAME}&password={PASSWORD}"
-               f"&dateStart={date_start}&dateEnd={date_end}"
-               f"&ini={offset}&cant={batch}&format=json")
-        try:
-            r = requests.get(url, timeout=30)
-            r.raise_for_status()
-            chunk = _parse_response(r.json())
-        except Exception as e:
-            st.error(f"Error en la API: {e}")
-            break
-        if chunk.empty:
-            break
-        all_rows.append(chunk)
-        offset += len(chunk)
-        total_so_far = sum(len(x) for x in all_rows)
-        prog.progress(min(total_so_far / limit, 1.0), text=f"Descargando... {total_so_far:,} registros")
-        if len(chunk) < batch:
-            break
-    prog.empty()
-    return pd.concat(all_rows, ignore_index=True) if all_rows else pd.DataFrame()
+# =============================================================================
+# INTERFAZ STREAMLIT
+# =============================================================================
+st.set_page_config(page_title="Dashboard PBX - Monitoreo Telefónico", layout="wide")
+st.title("📞 Dashboard de Monitoreo de Central Telefónica (PBX)")
 
+# Crear dos pestañas principales
+tab_live, tab_history = st.tabs(["🎥 Llamadas en Vivo", "📊 Histórico y Métricas"])
 
-# ══════════════════════════════════════════════
-# HELPERS ANALISIS
-# ══════════════════════════════════════════════
-
-def best_dur_col(df: pd.DataFrame):
-    for c in (COL_BILLSEC, COL_DURATION):
-        if c in df.columns:
-            return c
-    return None
-
-
-def to_numeric(df: pd.DataFrame, col: str) -> pd.Series:
-    return pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-
-def label_agent(val) -> str:
-    return AGENTS.get(str(val).strip(), str(val))
-
-
-def compute_kpis(df: pd.DataFrame):
-    total = len(df)
-    dur_col = best_dur_col(df)
-    dur_min = dur_avg = 0.0
-    if dur_col:
-        secs = to_numeric(df, dur_col)
-        dur_min = secs.sum() / 60
-        dur_avg = secs.mean() if total else 0.0
-    asr = 0.0
-    if COL_STATUS in df.columns and total:
-        ans = df[COL_STATUS].str.upper().eq("ANSWERED").sum()
-        asr = ans / total * 100
-    return total, dur_min, dur_avg, asr
-
-
-# ══════════════════════════════════════════════
-# PAGINA
-# ══════════════════════════════════════════════
-st.set_page_config(
-    page_title="Dashboard PBX - CallMyWay",
-    page_icon="phone",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
-st.markdown("""
-<style>
-[data-testid="stMetricValue"]  { font-size: 2.2rem !important; font-weight: 500; }
-[data-testid="stMetricLabel"]  { font-size: .85rem; color: #888; }
-.block-container               { padding-top: 1.2rem; padding-bottom: 2rem; }
-div[data-testid="column"]      { padding: 0 6px; }
-.stTabs [data-baseweb="tab"]   { font-size: .95rem; padding: .5rem 1.2rem; }
-hr                             { margin: 1rem 0; opacity: .25; }
-</style>
-""", unsafe_allow_html=True)
-
-# ── Encabezado ────────────────────────────────
-now_lima = datetime.now(TZ)
-h1, h2 = st.columns([5, 2])
-with h1:
-    st.markdown("## Dashboard PBX — CallMyWay")
-    st.caption(f"Central **{USERNAME}** · Lima, Peru · {now_lima.strftime('%A %d %b %Y, %H:%M:%S')}")
-with h2:
-    if st.button("Recargar datos", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
-st.divider()
-
-# ══════════════════════════════════════════════
-# PESTANAS PRINCIPALES
-# ══════════════════════════════════════════════
-tab_live, tab_hist = st.tabs(["Llamadas en Vivo", "Historico y Metricas"])
-
-
-# ─────────────────────────────────────────────
-# PESTANA 1: LLAMADAS EN VIVO
-# ─────────────────────────────────────────────
+# =============================================================================
+# PESTAÑA 1: LLAMADAS EN VIVO
+# =============================================================================
 with tab_live:
-    with st.spinner("Consultando llamadas activas..."):
-        df_live = fetch_live_calls()
-
-    total_live = len(df_live)
-    kc1, kc2, kc3 = st.columns(3)
-    kc1.metric("Llamadas activas ahora", total_live)
-
-    if not df_live.empty:
-        dur_col = best_dur_col(df_live)
-        if dur_col:
-            kc2.metric("Duracion promedio", f"{to_numeric(df_live, dur_col).mean():.0f}s")
-        if COL_AGENT in df_live.columns:
-            kc3.metric("Agentes en linea", df_live[COL_AGENT].nunique())
-
-    st.divider()
-
-    if df_live.empty:
-        st.info("Sin llamadas activas ahora mismo. Pulsa **Recargar datos** para refrescar.")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.subheader("Llamadas Activas en este momento")
+    with col2:
+        if st.button("🔄 Recargar", use_container_width=True):
+            st.rerun()
+    
+    # Consultar live data
+    df_live = fetch_cdrs_live()
+    
+    if df_live is None:
+        st.warning("No se pudo obtener información de llamadas en vivo.")
+    elif df_live.empty:
+        st.info("✅ No hay llamadas activas en este momento.")
     else:
-        if COL_AGENT in df_live.columns:
-            df_live["Agente"] = df_live[COL_AGENT].apply(label_agent)
-        st.success(f"**{total_live}** llamada(s) en curso")
-        priority = ["Agente", COL_AGENT, COL_DST, COL_CALLDATE, COL_DURATION, COL_BILLSEC, COL_STATUS, COL_CLID]
-        cols_show = [c for c in priority if c in df_live.columns]
-        cols_rest = [c for c in df_live.columns if c not in cols_show]
-        st.dataframe(df_live[cols_show + cols_rest], use_container_width=True, hide_index=True)
+        # KPI: total de llamadas activas
+        total_active = len(df_live)
+        st.metric("📞 Llamadas Activas", total_active)
+        
+        # Mostrar tabla enriquecida con nombres de agentes
+        df_live_display = enrich_agent_names(df_live)
+        # Seleccionar columnas relevantes si existen
+        cols_to_show = []
+        if COL_AGENT in df_live_display.columns:
+            cols_to_show.append("agent_name")
+        for col in [COL_CALLER_ID, COL_DST, COL_STATUS, COL_DURATION, COL_START_TIME]:
+            if col in df_live_display.columns:
+                cols_to_show.append(col)
+        if not cols_to_show:
+            cols_to_show = df_live_display.columns.tolist()
+        
+        st.dataframe(df_live_display[cols_to_show], use_container_width=True)
 
-
-# ─────────────────────────────────────────────
-# PESTANA 2: HISTORICO Y METRICAS
-# ─────────────────────────────────────────────
-with tab_hist:
-
-    # Filtros
-    with st.container(border=True):
-        fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 1])
-        with fc1:
-            d_start = st.date_input("Fecha inicio", value=now_lima.date() - timedelta(days=7), format="DD/MM/YYYY")
-            t_start = st.time_input("Hora inicio",  value=datetime.strptime("00:00:00", "%H:%M:%S").time())
-        with fc2:
-            d_end   = st.date_input("Fecha fin",    value=now_lima.date(), format="DD/MM/YYYY")
-            t_end   = st.time_input("Hora fin",     value=datetime.strptime("23:59:59", "%H:%M:%S").time())
-        with fc3:
-            limit = st.number_input("Limite registros", 100, 50_000, 5_000, 500)
-            agent_filter = st.selectbox("Filtrar agente", ["Todos"] + list(AGENTS.values()))
-        with fc4:
-            st.markdown("<br>", unsafe_allow_html=True)
-            run = st.button("Buscar", type="primary", use_container_width=True)
-
-    if run:
-        if d_start > d_end:
-            st.error("La fecha de inicio no puede ser posterior a la fecha fin.")
+# =============================================================================
+# PESTAÑA 2: HISTÓRICO Y MÉTRICAS
+# =============================================================================
+with tab_history:
+    st.subheader("Configuración de consulta")
+    
+    # Filtros interactivos
+    col_date1, col_date2, col_limit = st.columns(3)
+    with col_date1:
+        # Fecha inicio: por defecto hoy 00:00:00
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        start_date = st.date_input("Fecha Inicio", value=today)
+        start_time = st.time_input("Hora Inicio", value=datetime.strptime("00:00:00", "%H:%M:%S").time())
+    with col_date2:
+        # Fecha fin: por defecto hoy 23:59:59
+        end_date = st.date_input("Fecha Fin", value=today)
+        end_time = st.time_input("Hora Fin", value=datetime.strptime("23:59:59", "%H:%M:%S").time())
+    with col_limit:
+        limit_registros = st.number_input("Límite de registros", min_value=1, max_value=100000, value=5000, step=100)
+    
+    # Botón de búsqueda
+    search_clicked = st.button("🔍 Buscar CDRs", type="primary", use_container_width=True)
+    
+    if search_clicked:
+        # Construir strings fecha-hora en formato exacto: yyyy-mm-dd HH:ii:ss
+        start_datetime = datetime.combine(start_date, start_time)
+        end_datetime = datetime.combine(end_date, end_time)
+        start_str = start_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        end_str = end_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        
+        with st.spinner("Consultando CDRs históricos..."):
+            # Llamada a la API (offset=0, usamos el límite directamente)
+            df_history = fetch_cdrs_history(start_str, end_str, offset=0, limit=limit_registros)
+        
+        if df_history is None:
+            st.error("No se pudieron obtener los datos históricos.")
+        elif df_history.empty:
+            st.warning("No se encontraron registros en el rango seleccionado.")
         else:
-            ds_str = f"{d_start} {t_start.strftime('%H:%M:%S')}"
-            de_str = f"{d_end} {t_end.strftime('%H:%M:%S')}"
-            with st.spinner("Consultando API..."):
-                df_h = fetch_historic(ds_str, de_str, int(limit))
-            st.session_state["df_hist"] = df_h
-            st.session_state["hist_range"] = (ds_str, de_str)
+            st.success(f"Se obtuvieron {len(df_history)} registros.")
+            
+            # Enriquecer con nombres de agentes
+            df_history = enrich_agent_names(df_history)
+            
+            # Verificar si existen columnas necesarias
+            required_cols = [COL_DURATION, COL_STATUS, COL_AGENT]
+            missing_cols = [c for c in required_cols if c not in df_history.columns]
+            
+            if missing_cols:
+                st.warning(f"El JSON devuelto no contiene las columnas esperadas: {missing_cols}. Se mostrará la tabla en crudo.")
+                st.dataframe(df_history, use_container_width=True)
+            else:
+                # 1. KPIs Globales
+                metrics = calculate_metrics(df_history)
+                col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+                with col_kpi1:
+                    st.metric("📞 Total llamadas", metrics["total_calls"])
+                with col_kpi2:
+                    st.metric("⏱️ Duración Total (min)", metrics["total_duration_min"])
+                with col_kpi3:
+                    st.metric("⚡ Duración Promedio (seg)", metrics["avg_duration_sec"])
+                with col_kpi4:
+                    st.metric("📈 Tasa de Respuesta (ASR)", f"{metrics['asr']}%")
+                
+                # 2. Gráfico de dona: distribución de estados
+                if COL_STATUS in df_history.columns:
+                    status_counts = df_history[COL_STATUS].value_counts().reset_index()
+                    status_counts.columns = ["Estado", "Cantidad"]
+                    fig_donut = px.pie(status_counts, values="Cantidad", names="Estado", 
+                                       title="Distribución por Estado de Llamada",
+                                       hole=0.4)
+                    st.plotly_chart(fig_donut, use_container_width=True)
+                else:
+                    st.info("No se pudo mostrar gráfico de estados: columna 'disposition' no encontrada.")
+                
+                # 3. Gráfico de barras: Top 10 agentes por volumen
+                top_agents = get_top_agents(df_history, top_n=10)
+                if not top_agents.empty:
+                    fig_bar = px.bar(top_agents, x="agent_name", y="total_calls",
+                                     title="Top 10 Agentes con Mayor Volumen de Llamadas",
+                                     labels={"agent_name": "Agente", "total_calls": "Total llamadas"},
+                                     text="total_calls")
+                    fig_bar.update_traces(textposition="outside")
+                    st.plotly_chart(fig_bar, use_container_width=True)
+                else:
+                    st.info("No se pudo generar el gráfico de agentes (sin datos o columna src faltante).")
+                
+                # 4. Tabla de Agentes (agrupada)
+                st.subheader("📋 Resumen por Agente")
+                agent_summary = get_agent_summary(df_history)
+                if not agent_summary.empty:
+                    # Renombrar para mejor presentación
+                    agent_summary_display = agent_summary.rename(columns={
+                        COL_AGENT: "Extensión",
+                        "agent_name": "Agente",
+                        "total_calls": "Total llamadas",
+                        "total_duration_min": "Duración Total (min)",
+                        "avg_duration_sec": "Duración Promedio (seg)"
+                    })
+                    st.dataframe(agent_summary_display, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No se pudo generar la tabla de resumen por agente.")
+                
+                # Opcional: mostrar muestra de los datos crudos (desplegable)
+                with st.expander("Ver datos crudos (muestra)"):
+                    st.dataframe(df_history.head(100), use_container_width=True)
 
-    if "df_hist" not in st.session_state:
-        st.info("Selecciona un rango de fechas y pulsa **Buscar** para cargar el historico.")
-        st.stop()
-
-    df_h: pd.DataFrame = st.session_state["df_hist"].copy()
-    ds_str, de_str = st.session_state["hist_range"]
-
-    if df_h.empty:
-        st.warning("La API no devolvio registros para ese rango. Prueba con otro periodo.")
-        st.stop()
-
-    # Enriquecer nombres de agente
-    if COL_AGENT in df_h.columns:
-        df_h["Agente"] = df_h[COL_AGENT].apply(label_agent)
-
-    # Filtro local por agente
-    if agent_filter != "Todos" and "Agente" in df_h.columns:
-        df_h = df_h[df_h["Agente"] == agent_filter]
-
-    # Advertencias columnas faltantes
-    missing = [c for c in [COL_DURATION, COL_AGENT, COL_STATUS] if c not in df_h.columns]
-    if missing:
-        st.warning(f"Columnas no encontradas: `{'`, `'.join(missing)}`. "
-                   f"Disponibles: `{'`, `'.join(df_h.columns.tolist())}`")
-
-    dur_col = best_dur_col(df_h)
-    if dur_col:
-        df_h[dur_col] = to_numeric(df_h, dur_col)
-
-    st.success(f"**{len(df_h):,}** registros · {ds_str}  ->  {de_str}")
-
-    # ── KPIs ─────────────────────────────────
-    st.markdown("### KPIs Globales")
-    total, dur_min, dur_avg, asr = compute_kpis(df_h)
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Total llamadas",          f"{total:,}")
-    k2.metric("Duracion total (min)",    f"{dur_min:,.1f}")
-    k3.metric("Duracion promedio (seg)", f"{dur_avg:,.1f}")
-    k4.metric("ASR - Tasa de respuesta", f"{asr:.1f}%")
-
-    st.divider()
-
-    # ── Graficos ─────────────────────────────
-    st.markdown("### Visualizaciones")
-    g1, g2 = st.columns(2)
-
-    with g1:
-        st.markdown("#### Distribucion de estados")
-        if COL_STATUS in df_h.columns:
-            sc = (df_h[COL_STATUS].fillna("DESCONOCIDO").str.upper()
-                  .value_counts().reset_index())
-            sc.columns = ["Estado", "Llamadas"]
-            fig_pie = px.pie(
-                sc, names="Estado", values="Llamadas", hole=.45,
-                color="Estado", color_discrete_map=STATUS_COLORS,
-            )
-            fig_pie.update_traces(
-                textposition="inside", textinfo="percent+label",
-                marker=dict(line=dict(width=2, color="white"))
-            )
-            fig_pie.update_layout(
-                showlegend=True, margin=dict(t=10, b=10, l=10, r=10),
-                legend=dict(font=dict(size=12))
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
-        else:
-            st.info(f"Columna `{COL_STATUS}` no disponible.")
-
-    with g2:
-        st.markdown("#### Top 10 agentes - volumen")
-        agent_col = "Agente" if "Agente" in df_h.columns else (COL_AGENT if COL_AGENT in df_h.columns else None)
-        if agent_col:
-            ta = (df_h[agent_col].fillna("Sin agente")
-                  .value_counts().head(10).reset_index())
-            ta.columns = ["Agente", "Llamadas"]
-            ta = ta.sort_values("Llamadas")
-            fig_bar = px.bar(
-                ta, x="Llamadas", y="Agente", orientation="h",
-                color="Llamadas", color_continuous_scale="Blues", text="Llamadas",
-            )
-            fig_bar.update_traces(textposition="outside")
-            fig_bar.update_layout(
-                margin=dict(t=10, b=10, l=10, r=10),
-                coloraxis_showscale=False, yaxis_title=None
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-        else:
-            st.info("Columna de agente no disponible.")
-
-    # ── Serie temporal ────────────────────────
-    if COL_CALLDATE in df_h.columns:
-        st.markdown("#### Llamadas por hora")
-        try:
-            dfc = df_h.copy()
-            dfc[COL_CALLDATE] = pd.to_datetime(dfc[COL_CALLDATE], errors="coerce")
-            hourly = (dfc.dropna(subset=[COL_CALLDATE])
-                      .set_index(COL_CALLDATE)
-                      .resample("1h").size().reset_index())
-            hourly.columns = ["Hora", "Llamadas"]
-            fig_ts = px.bar(
-                hourly, x="Hora", y="Llamadas",
-                color_discrete_sequence=["#378ADD"],
-            )
-            fig_ts.update_layout(margin=dict(t=10, b=10, l=10, r=10), xaxis_title=None)
-            st.plotly_chart(fig_ts, use_container_width=True)
-        except Exception:
-            pass
-
-    st.divider()
-
-    # ── Tabla por agente ──────────────────────
-    st.markdown("### Resumen por agente")
-    agent_col = "Agente" if "Agente" in df_h.columns else (COL_AGENT if COL_AGENT in df_h.columns else None)
-
-    if agent_col:
-        agg = {"Total llamadas": (agent_col, "count")}
-        if dur_col:
-            agg["Dur. total (min)"] = (dur_col, lambda x: round(x.sum() / 60, 1))
-            agg["Dur. prom. (seg)"] = (dur_col, lambda x: round(x.mean(), 1))
-        if COL_STATUS in df_h.columns:
-            agg["Contestadas"] = (COL_STATUS, lambda x: int(x.str.upper().eq("ANSWERED").sum()))
-
-        df_ag = (df_h.groupby(agent_col)
-                 .agg(**agg)
-                 .reset_index()
-                 .rename(columns={agent_col: "Agente"})
-                 .sort_values("Total llamadas", ascending=False))
-
-        if "Contestadas" in df_ag.columns:
-            df_ag["ASR %"] = (df_ag["Contestadas"] / df_ag["Total llamadas"] * 100).round(1)
-
-        st.dataframe(
-            df_ag, use_container_width=True, hide_index=True,
-            column_config={
-                "Total llamadas":   st.column_config.NumberColumn(format="%d"),
-                "Dur. total (min)": st.column_config.NumberColumn(format="%.1f"),
-                "Dur. prom. (seg)": st.column_config.NumberColumn(format="%.1f"),
-                "Contestadas":      st.column_config.NumberColumn(format="%d"),
-                "ASR %":            st.column_config.ProgressColumn(
-                                        format="%.1f%%", min_value=0, max_value=100),
-            },
-        )
-    else:
-        st.dataframe(df_h, use_container_width=True, hide_index=True)
-
-    st.divider()
-
-    # ── Tabla cruda completa ──────────────────
-    with st.expander("Ver todos los registros", expanded=False):
-        priority = ["Agente", COL_AGENT, COL_CALLDATE, COL_DST, dur_col, COL_STATUS]
-        cols_show = [c for c in priority if c and c in df_h.columns]
-        cols_rest = [c for c in df_h.columns if c not in cols_show]
-        st.dataframe(df_h[cols_show + cols_rest], use_container_width=True, hide_index=True)
-        csv = df_h.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Descargar CSV completo",
-            data=csv,
-            file_name=f"pbx_cdrs_{ds_str[:10]}_{de_str[:10]}.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
+# =============================================================================
+# NOTA FINAL: El dashboard está listo para ejecutarse con: streamlit run app.py
+# =============================================================================
