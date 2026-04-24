@@ -9,7 +9,7 @@ import time
 # ─── Configuración ────────────────────────────────────────────────────────────
 AGENTES = {
     "8668106": "Central Virtual",
-    "8668109": "Edwin Loyola",
+    "8668109": "Alonso Loyola",
     "8668110": "Jose Luis Cahuana",
     "8668112": "Daniel Huayta",
     "8668111": "Deivy Chavez",
@@ -17,6 +17,42 @@ AGENTES = {
     "8672537": "Victor Figueroa",
 }
 AGENTES_SIN_CENTRAL = {k: v for k, v in AGENTES.items() if v != "Central Virtual"}
+
+# ─── Turnos ────────────────────────────────────────────────────────────────────
+# dias: 0=Lun … 4=Vie, 5=Sáb, 6=Dom
+# Los turnos que cruzan medianoche (22-6) se manejan con lógica especial
+TURNOS = [
+    # Lunes a viernes
+    {"dias": [0,1,2,3,4], "h_ini":  6, "h_fin": 14, "agente": "Alonso Loyola"},
+    {"dias": [0,1,2,3,4], "h_ini": 14, "h_fin": 22, "agente": "Jose Luis Cahuana"},
+    {"dias": [0,1,2,3,4], "h_ini": 22, "h_fin": 30, "agente": "Deivy Chavez"},   # 22h→30h = hasta 6am siguiente
+    # Sábados y domingos
+    {"dias": [5,6],        "h_ini":  6, "h_fin": 14, "agente": "Daniel Huayta"},
+    {"dias": [5,6],        "h_ini": 14, "h_fin": 22, "agente": "Luz Goicochea"},  # sin ID aún — se asigna como perdida
+    {"dias": [5,6],        "h_ini": 22, "h_fin": 30, "agente": "Joe Villanueva"},
+]
+# Agentes sin ID en la central — sus llamadas siempre serán "perdidas" hasta tener el ID
+AGENTES_SIN_ID = {"Luz Goicochea"}
+
+def agente_de_turno(dt):
+    """Devuelve el nombre del agente de turno para un datetime dado."""
+    if pd.isna(dt):
+        return "Sin turno"
+    dow = dt.weekday()  # 0=Lun
+    # Hora extendida: si es 0-5am, pertenece al turno nocturno del día anterior
+    h = dt.hour
+    h_ext = h if h >= 6 else h + 24   # 0am→24, 1am→25 … 5am→29
+    # Primero buscar en el mismo día de semana con hora extendida
+    for t in TURNOS:
+        if dow in t["dias"] and t["h_ini"] <= h_ext < t["h_fin"]:
+            return t["agente"]
+    # Para horas 0-5am, el turno nocturno pertenece al día anterior
+    dow_prev = (dow - 1) % 7
+    for t in TURNOS:
+        if dow_prev in t["dias"] and t["h_ini"] <= h_ext < t["h_fin"]:
+            return t["agente"]
+    return "Sin turno"
+
 
 END_REASONS = {
     "OK": "Completada",
@@ -115,23 +151,64 @@ div[data-testid="stSelectbox"] select { background: #0C0F1C !important; }
 """, unsafe_allow_html=True)
 
 
-# ─── API ──────────────────────────────────────────────────────────────────────
-def fetch_cdrs(username, password, date_start=None, date_end=None, recent=False, live=False):
-    params = {"username": username, "password": password, "format": "json"}
-    if live:    params.update({"live": 1, "fullAccount": 1})
-    elif recent: params["recent"] = 1
-    else:        params.update({"dateStart": date_start, "dateEnd": date_end, "ini": 0, "cant": 5000})
+# ─── API con paginación ───────────────────────────────────────────────────────
+PAGE_SIZE = 1000   # registros por página
+
+def _fetch_page(params, ini):
+    """Trae una página de resultados."""
+    p = {**params, "ini": ini, "cant": PAGE_SIZE}
+    r = requests.get("https://callmyway.com/getCdrs.php", params=p, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    if isinstance(data, dict) and "error" in data:
+        raise ValueError(data["error"])
+    cdrs = data.get("cdrs", data) if isinstance(data, dict) else data
+    return cdrs if cdrs else []
+
+def fetch_cdrs(username, password, date_start=None, date_end=None, recent=False, live=False,
+               progress_cb=None):
+    """
+    Descarga CDRs con paginación automática para evitar timeouts en rangos grandes.
+    progress_cb(pct, msg): callback opcional para mostrar progreso.
+    """
+    base_params = {"username": username, "password": password, "format": "json"}
+
+    if live:
+        base_params.update({"live": 1, "fullAccount": 1})
+        try:
+            cdrs = _fetch_page(base_params, 0)
+            return pd.DataFrame(cdrs), None
+        except Exception as e:
+            return None, str(e)
+
+    if recent:
+        base_params["recent"] = 1
+        try:
+            cdrs = _fetch_page(base_params, 0)
+            return pd.DataFrame(cdrs), None
+        except Exception as e:
+            return None, str(e)
+
+    # Histórico con paginación
+    base_params.update({"dateStart": date_start, "dateEnd": date_end})
+    all_cdrs = []
+    ini = 0
     try:
-        r = requests.get("https://callmyway.com/getCdrs.php", params=params, timeout=20)
-        r.raise_for_status()
-        data = r.json()
-        if isinstance(data, dict) and "error" in data:
-            return None, data["error"]
-        cdrs = data.get("cdrs", data) if isinstance(data, dict) else data
-        return (pd.DataFrame(cdrs) if cdrs else pd.DataFrame()), None
-    except requests.exceptions.Timeout:
-        return None, "Timeout — intenta un rango menor."
+        while True:
+            page = _fetch_page(base_params, ini)
+            if not page:
+                break
+            all_cdrs.extend(page)
+            if progress_cb:
+                progress_cb(min(ini / max(len(all_cdrs), 1), 0.95),
+                            f"Descargando… {len(all_cdrs):,} registros")
+            if len(page) < PAGE_SIZE:
+                break   # última página
+            ini += PAGE_SIZE
+        return (pd.DataFrame(all_cdrs) if all_cdrs else pd.DataFrame()), None
     except Exception as e:
+        if all_cdrs:   # devolver lo que tenemos aunque haya fallado en alguna página
+            return pd.DataFrame(all_cdrs), None
         return None, str(e)
 
 
@@ -243,6 +320,20 @@ def procesar(df_raw):
             df_grp["fecha"]           = df_grp["detect_time"].dt.date
             df_grp["end_reason_es"]   = df_grp["end_reason"].map(END_REASONS).fillna(df_grp["end_reason"])
             df_grp["numero_cliente"]  = df_grp["ani_cliente"].astype(str)
+            # Agente de turno según horario (para llamadas perdidas)
+            df_grp["agente_turno"] = df_grp["detect_time"].apply(agente_de_turno)
+            # Responsable:
+            #   - Si atendida Y el agente de turno TIENE ID → quien contestó
+            #   - Si perdida  → agente de turno (incluyendo Luz Goicochea sin ID)
+            #   - Si turno es AGENTES_SIN_ID → siempre perdida/responsable = ese agente
+            def calc_responsable(r):
+                if r["agente_turno"] in AGENTES_SIN_ID:
+                    return r["agente_turno"]   # sin ID = no puede contestar = perdida
+                return r["agente"] if r["atendida"] else r["agente_turno"]
+            df_grp["responsable"] = df_grp.apply(calc_responsable, axis=1)
+            # Forzar atendida=False para turnos sin ID
+            df_grp.loc[df_grp["agente_turno"].isin(AGENTES_SIN_ID), "atendida"] = False
+            df_grp.loc[df_grp["agente_turno"].isin(AGENTES_SIN_ID), "agente"]   = "Sin atender"
             df_entrantes = df_grp.rename(columns={"ring_total": "espera_total"})
 
     return df_entrantes, df_salientes, df
@@ -313,8 +404,12 @@ if live_mode:
 elif btn_ok:
     ds = datetime.combine(fi, hi).strftime("%Y-%m-%d %H:%M:%S")
     de = datetime.combine(ff, hf).strftime("%Y-%m-%d %H:%M:%S")
-    with st.spinner("Consultando API..."):
-        df_raw, err = fetch_cdrs(username, password, date_start=ds, date_end=de)
+    prog_bar = st.progress(0, text="Iniciando consulta…")
+    def on_progress(pct, msg):
+        prog_bar.progress(pct, text=msg)
+    df_raw, err = fetch_cdrs(username, password, date_start=ds, date_end=de,
+                             progress_cb=on_progress)
+    prog_bar.empty()
     if err: st.session_state.error = err
     else:   cargar(df_raw, f"{fi.strftime('%d/%m')} – {ff.strftime('%d/%m/%Y')}")
 elif btn_hoy:
@@ -393,8 +488,8 @@ P = dict(paper_bgcolor="#06080F", plot_bgcolor="#06080F",
          font=dict(color="#2A4060", family="Outfit"), margin=dict(t=10,b=30,l=5,r=5))
 
 # ─── TABS ─────────────────────────────────────────────────────────────────────
-tab_ov, tab_ent, tab_sal, tab_ag, tab_cl, tab_raw = st.tabs([
-    "VISIÓN GENERAL", "ENTRANTES", "SALIENTES", "AGENTES", "CLIENTES", "REGISTROS"
+tab_ov, tab_ent, tab_sal, tab_ag, tab_turnos, tab_cl, tab_raw = st.tabs([
+    "VISIÓN GENERAL", "ENTRANTES", "SALIENTES", "AGENTES", "TURNOS", "CLIENTES", "REGISTROS"
 ])
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -519,6 +614,7 @@ with tab_ent:
 
         # Tabla visual de llamadas
         cols_tabla = [c for c in ["detect_time","numero_cliente","atendida","agente",
+                                   "responsable","agente_turno",
                                    "duracion","espera_total","n_intentos","end_reason_es"] if c in df_v.columns]
         df_show = df_v[cols_tabla].copy()
         if "duracion"      in df_show.columns: df_show["duracion"]      = df_show["duracion"].apply(fmt_dur)
@@ -527,7 +623,8 @@ with tab_ent:
 
         df_show = df_show.rename(columns={
             "detect_time":"Fecha/Hora","numero_cliente":"Número","atendida":"Estado",
-            "agente":"Agente","duracion":"Duración","espera_total":"Espera",
+            "agente":"Contestó","responsable":"Responsable","agente_turno":"Turno asignado",
+            "duracion":"Duración","espera_total":"Espera",
             "n_intentos":"Intentos","end_reason_es":"Resultado",
         })
         st.caption(f"{len(df_v):,} llamadas · Atendidas: {int((df_v['atendida']==True).sum())} · Perdidas: {int((df_v['atendida']==False).sum())}")
@@ -643,6 +740,7 @@ with tab_ag:
             "ent_atendidas": n_at, "avg_dur": avg_d, "total_min": total_min_ag,
             "avg_espera": avg_e, "salientes": n_sal_ag,
             "sal_ok": n_sal_ok_ag, "rebotes": rebotes,
+                "per_turno": len(df_ent[(df_ent.get("responsable","") == nombre) & (df_ent.get("atendida",False)==False)]) if not df_ent.empty and "responsable" in df_ent.columns else 0,
         })
 
     ag_data.sort(key=lambda x: x["ent_atendidas"], reverse=True)
@@ -686,8 +784,9 @@ with tab_ag:
                   <div style='color:#7A9ABA;margin-top:2px'>{ag['rebotes']}</div>
                 </div>
               </div>
-              <div style='margin-top:10px;font-size:10px;color:#1A3050;text-align:right;font-family:JetBrains Mono,monospace'>
-                {total_min_ag} min facturados · {pct_ag}% atención
+              <div style='margin-top:8px;display:flex;justify-content:space-between;font-size:10px;font-family:JetBrains Mono,monospace'>
+                <span style='color:#EF4444'>{ag['per_turno']} perd. en turno</span>
+                <span style='color:#1A3050'>{total_min_ag} min · {pct_ag}% at.</span>
               </div>
             </div>
             """.replace("total_min_ag", str(ag["total_min"])), unsafe_allow_html=True)
@@ -727,6 +826,150 @@ with tab_ag:
             )
             fig_dur_ag.update_traces(marker_line_width=0)
             st.plotly_chart(fig_dur_ag, use_container_width=True)
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 4 — TURNOS
+# ════════════════════════════════════════════════════════════════════════════════
+with tab_turnos:
+    if df_ent.empty:
+        st.info("Sin datos para analizar turnos.")
+    else:
+        # ── Tabla de horarios ─────────────────────────────────────────────────
+        st.markdown("#### 📅 Horario de turnos")
+        horario_data = [
+            {"Días": "Lun – Vie", "Turno": "Mañana", "Horario": "06:00 – 14:00", "Agente": "Alonso Loyola",      "ID Central": "8668109", "Estado": "✅ Activo"},
+            {"Días": "Lun – Vie", "Turno": "Tarde",  "Horario": "14:00 – 22:00", "Agente": "Jose Luis Cahuana", "ID Central": "8668110", "Estado": "✅ Activo"},
+            {"Días": "Lun – Vie", "Turno": "Noche",  "Horario": "22:00 – 06:00", "Agente": "Deivy Chavez",      "ID Central": "8668111", "Estado": "✅ Activo"},
+            {"Días": "Sáb – Dom", "Turno": "Mañana", "Horario": "06:00 – 14:00", "Agente": "Daniel Huayta",     "ID Central": "8668112", "Estado": "✅ Activo"},
+            {"Días": "Sáb – Dom", "Turno": "Tarde",  "Horario": "14:00 – 22:00", "Agente": "Luz Goicochea",     "ID Central": "pendiente","Estado": "⏳ Sin ID"},
+            {"Días": "Sáb – Dom", "Turno": "Noche",  "Horario": "22:00 – 06:00", "Agente": "Joe Villanueva",    "ID Central": "8668114", "Estado": "✅ Activo"},
+        ]
+        st.dataframe(pd.DataFrame(horario_data), use_container_width=True, hide_index=True, height=250)
+
+        st.markdown("---")
+
+        # ── Métricas por responsable de turno ─────────────────────────────────
+        st.markdown("#### 📊 Rendimiento por responsable de turno")
+
+        if "responsable" in df_ent.columns:
+            t_stats = []
+            todos_responsables = df_ent["responsable"].dropna().unique().tolist()
+            for resp in sorted(todos_responsables):
+                sub = df_ent[df_ent["responsable"] == resp]
+                tot = len(sub)
+                at  = int((sub["atendida"] == True).sum())
+                per = tot - at
+                pct = round(at/tot*100) if tot else 0
+                durs = sub[sub["atendida"]==True]["duracion"].dropna()
+                avg_d = int(durs.mean()) if len(durs) else 0
+                t_stats.append({
+                    "Agente / Responsable": resp,
+                    "Total": tot, "Atendidas": at, "Perdidas": per,
+                    "% Atención": pct, "Dur. prom.": fmt_dur(avg_d),
+                })
+
+            df_ts = pd.DataFrame(t_stats).sort_values("% Atención", ascending=False)
+            st.dataframe(df_ts, use_container_width=True, hide_index=True, height=280)
+
+            # Gráfico: atendidas vs perdidas por responsable
+            tc1, tc2 = st.columns(2)
+            with tc1:
+                fig_tr = go.Figure()
+                fig_tr.add_trace(go.Bar(name="Atendidas",
+                    x=df_ts["Agente / Responsable"], y=df_ts["Atendidas"],
+                    marker_color="#166534", marker_line_width=0))
+                fig_tr.add_trace(go.Bar(name="Perdidas",
+                    x=df_ts["Agente / Responsable"], y=df_ts["Perdidas"],
+                    marker_color="#7F1D1D", marker_line_width=0))
+                fig_tr.update_layout(height=300, barmode="stack", **P,
+                    xaxis_title="", yaxis=dict(gridcolor="rgba(255,255,255,0.03)", title=""),
+                    legend=dict(font_size=11, orientation="h", y=-0.2, font_color="#2A4060"),
+                    title=dict(text="Llamadas por responsable de turno", font=dict(size=12,color="#2A4060"),x=0),
+                    xaxis=dict(tickangle=-20, tickfont_size=11),
+                )
+                st.plotly_chart(fig_tr, use_container_width=True)
+
+            with tc2:
+                df_ts2 = df_ts.copy()
+                fig_pct = px.bar(df_ts2.sort_values("% Atención"),
+                    x="% Atención", y="Agente / Responsable", orientation="h",
+                    color="% Atención",
+                    color_continuous_scale=["#7F1D1D","#92400E","#166534"],
+                    range_color=[0, 100],
+                    text="% Atención",
+                )
+                fig_pct.update_traces(marker_line_width=0,
+                    texttemplate="%{text}%", textposition="outside",
+                    textfont=dict(size=11, color="#2A4060"),
+                )
+                fig_pct.update_layout(height=300, coloraxis_showscale=False, **P,
+                    xaxis=dict(gridcolor="rgba(255,255,255,0.03)", title="% Atención", range=[0,115]),
+                    yaxis_title="",
+                    title=dict(text="% Atención por responsable", font=dict(size=12,color="#2A4060"),x=0),
+                )
+                st.plotly_chart(fig_pct, use_container_width=True)
+
+            # ── Mapa de calor: hora × día coloreado por turno ─────────────────
+            st.markdown("---")
+            st.markdown("#### 🕐 Distribución de llamadas por hora y día")
+
+            if "fecha" in df_ent.columns and "hora" in df_ent.columns:
+                df_heat = df_ent.copy()
+                df_heat["dia_semana"] = df_ent["detect_time"].dt.day_name()
+                dias_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+                dias_es    = {"Monday":"Lun","Tuesday":"Mar","Wednesday":"Mié",
+                              "Thursday":"Jue","Friday":"Vie","Saturday":"Sáb","Sunday":"Dom"}
+
+                # Separar atendidas y perdidas
+                hc1, hc2 = st.columns(2)
+                for col_h, titulo_h, mask_h in [
+                    (hc1, "Llamadas atendidas", df_heat["atendida"]==True),
+                    (hc2, "Llamadas perdidas",  df_heat["atendida"]==False),
+                ]:
+                    sub_h = df_heat[mask_h]
+                    heat = sub_h.groupby(["dia_semana","hora"]).size().reset_index(name="n")
+                    hp = heat.pivot_table(index="dia_semana", columns="hora", values="n", fill_value=0)
+                    hp = hp.reindex([d for d in dias_order if d in hp.index])
+                    hp.index = [dias_es.get(d, d) for d in hp.index]
+                    # Llenar horas faltantes con 0
+                    for h in range(24):
+                        if h not in hp.columns: hp[h] = 0
+                    hp = hp[sorted(hp.columns)]
+                    color_scale = ["#06080F","#166534","#22C55E"] if "atendidas" in titulo_h else ["#06080F","#7F1D1D","#EF4444"]
+                    fig_hm = px.imshow(hp, color_continuous_scale=color_scale,
+                        aspect="auto", labels=dict(x="Hora",y="Día",color="Llamadas"))
+                    fig_hm.update_layout(height=220, **P,
+                        title=dict(text=titulo_h, font=dict(size=12,color="#2A4060"),x=0),
+                        coloraxis_showscale=True,
+                        xaxis=dict(dtick=2, title="Hora"),
+                        yaxis_title="",
+                    )
+                    with col_h:
+                        st.plotly_chart(fig_hm, use_container_width=True)
+
+            # ── Detalle de perdidas por turno ─────────────────────────────────
+            st.markdown("---")
+            st.markdown("#### ❌ Llamadas perdidas por turno")
+            df_per_turno = df_ent[df_ent["atendida"]==False].copy()
+            if not df_per_turno.empty and "responsable" in df_per_turno.columns:
+                cols_per = [c for c in ["detect_time","numero_cliente","responsable",
+                                         "agente_turno","espera_total","n_intentos","end_reason_es"] if c in df_per_turno.columns]
+                dp_show = df_per_turno[cols_per].copy()
+                if "espera_total" in dp_show.columns:
+                    dp_show["espera_total"] = dp_show["espera_total"].apply(fmt_dur)
+                dp_show = dp_show.rename(columns={
+                    "detect_time":"Fecha/Hora","numero_cliente":"Número",
+                    "responsable":"Responsable","agente_turno":"Turno",
+                    "espera_total":"Espera","n_intentos":"Intentos","end_reason_es":"Motivo",
+                })
+                dp_show = dp_show.sort_values("Fecha/Hora", ascending=False)
+                st.caption(f"{len(dp_show):,} llamadas perdidas")
+                st.dataframe(dp_show, use_container_width=True, height=380, hide_index=True)
+                csv_per_t = df_per_turno.to_csv(index=False).encode("utf-8-sig")
+                st.download_button("⬇ Exportar perdidas por turno",
+                    data=csv_per_t, file_name=f"perdidas_turno_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv")
 
 
 # ════════════════════════════════════════════════════════════════════════════════
