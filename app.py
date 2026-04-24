@@ -172,48 +172,78 @@ def procesar(df_raw):
     df_salientes["fecha"]     = df_salientes["detect_time"].dt.date
     df_salientes["end_reason_es"] = df_salientes["end_reason"].map(END_REASONS).fillna(df_salientes["end_reason"])
 
-    # ── 2. LLAMADAS ENTRANTES — deduplicar por original_callid ──────────────
+    # ── 2. LLAMADAS ENTRANTES — lógica correcta ─────────────────────────────
+    #
+    # La central genera DOS tipos de registros por llamada:
+    #   A) Registro tronco: dnis_user=8668106 (Central Virtual) — la llamada llega al sistema
+    #   B) Registros agente: dnis_user=8668109/8668110/etc — intentos de ring al agente
+    #
+    # Regla: una llamada existe SI Y SOLO SI hay al menos un registro tipo B.
+    # Atendida = existe registro tipo B con duration > 0.
+    # Perdida  = solo existen registros tipo B con duration == 0.
+    # El registro tipo A (tronco) se ignora completamente para métricas.
+
     df_inc = df[df["type"] == "incoming"].copy()
 
     if df_inc.empty:
         df_entrantes = pd.DataFrame()
     else:
-        # Padres = intentos de ring directo al agente (ref_callid == "0", dnis_user es agente)
-        # O el tronco principal (dnis_user == 8668106)
-        # Estrategia: tomar el registro con mayor duration por original_callid
+        agentes_reales = {k for k in agentes_ids if k != "8668106"}
 
-        # Registros donde el agente real contestó (dnis_user en agentes, duration > 0)
-        df_atendidas_inc = df_inc[
-            df_inc["dnis_user"].isin(agentes_ids) &
-            (df_inc["dnis_user"] != "8668106") &
-            (df_inc["duration"] > 0)
-        ].copy()
+        # Solo registros donde el destinatario es un agente real (no Central Virtual)
+        df_agentes = df_inc[df_inc["dnis_user"].isin(agentes_reales)].copy()
 
-        atendio = df_atendidas_inc.groupby("original_callid").agg(
-            agente=("dnis_user", lambda x: AGENTES.get(x.iloc[0], x.iloc[0])),
-            duracion=("duration", "max"),
-            connect_time=("connect_time", "first"),
-        ).reset_index()
+        if df_agentes.empty:
+            df_entrantes = pd.DataFrame()
+        else:
+            # Número de cliente viene del registro del tronco (ani cuando ani_user=8668106)
+            # o del propio registro del agente
+            tronco_ani = (
+                df_inc[df_inc["dnis_user"] == "8668106"]
+                .groupby("original_callid")["ani"]
+                .first()
+                .reset_index()
+                .rename(columns={"ani": "ani_cliente"})
+            )
+            # Fallback: tomar ani del primer registro del agente
+            agente_ani = (
+                df_agentes.groupby("original_callid")["ani"]
+                .first()
+                .reset_index()
+                .rename(columns={"ani": "ani_cliente_fb"})
+            )
 
-        # Espera y número de intentos por original_callid
-        espera_df = df_inc.groupby("original_callid").agg(
-            total_ring=("ring_time", "sum"),
-            n_intentos=("callid", "count"),
-            ani_cliente=("ani", "first"),
-            detect_time=("detect_time", "min"),
-            end_reason=("end_reason", lambda x: x[x != "OK"].iloc[0] if (x != "OK").any() else "OK"),
-        ).reset_index()
+            # Agrupar por original_callid usando solo registros de agentes reales
+            df_grp = df_agentes.groupby("original_callid").agg(
+                ring_total=("ring_time", "sum"),
+                n_intentos=("callid", "count"),
+                detect_time=("detect_time", "min"),
+                # Agente que contestó = dnis_user del registro con mayor duration
+                agente_id=("dnis_user", lambda x: x.loc[df_agentes.loc[x.index, "duration"].idxmax()]
+                           if df_agentes.loc[x.index, "duration"].max() > 0 else None),
+                duracion=("duration", "max"),
+                # Motivo de no atención: la razón más frecuente distinta de OK
+                end_reason=("end_reason", lambda x: (
+                    x[x != "OK"].value_counts().index[0]
+                    if (x != "OK").any() else "OK"
+                )),
+            ).reset_index()
 
-        df_entrantes = espera_df.merge(atendio, on="original_callid", how="left")
-        df_entrantes["atendida"]  = df_entrantes["duracion"].notna() & (df_entrantes["duracion"] > 0)
-        df_entrantes["duracion"]  = df_entrantes["duracion"].fillna(0).astype(int)
-        df_entrantes["agente"]    = df_entrantes["agente"].fillna("Sin atender")
-        df_entrantes["tipo_call"] = "Entrante"
-        df_entrantes["hora"]      = df_entrantes["detect_time"].dt.hour
-        df_entrantes["fecha"]     = df_entrantes["detect_time"].dt.date
-        df_entrantes["end_reason_es"] = df_entrantes["end_reason"].map(END_REASONS).fillna(df_entrantes["end_reason"])
-        df_entrantes["numero_cliente"] = df_entrantes["ani_cliente"].astype(str)
-        df_entrantes = df_entrantes.rename(columns={"total_ring": "espera_total"})
+            # Unir número de cliente
+            df_grp = df_grp.merge(tronco_ani, on="original_callid", how="left")
+            df_grp = df_grp.merge(agente_ani,  on="original_callid", how="left")
+            df_grp["ani_cliente"] = df_grp["ani_cliente"].fillna(df_grp["ani_cliente_fb"])
+            df_grp.drop(columns=["ani_cliente_fb"], inplace=True, errors="ignore")
+
+            df_grp["atendida"]        = df_grp["duracion"].notna() & (df_grp["duracion"] > 0)
+            df_grp["duracion"]        = df_grp["duracion"].fillna(0).astype(int)
+            df_grp["agente"]          = df_grp["agente_id"].map(AGENTES).fillna("Sin atender")
+            df_grp["tipo_call"]       = "Entrante"
+            df_grp["hora"]            = df_grp["detect_time"].dt.hour
+            df_grp["fecha"]           = df_grp["detect_time"].dt.date
+            df_grp["end_reason_es"]   = df_grp["end_reason"].map(END_REASONS).fillna(df_grp["end_reason"])
+            df_grp["numero_cliente"]  = df_grp["ani_cliente"].astype(str)
+            df_entrantes = df_grp.rename(columns={"ring_total": "espera_total"})
 
     return df_entrantes, df_salientes, df
 
