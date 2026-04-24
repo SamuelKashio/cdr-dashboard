@@ -2,290 +2,150 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import time
 
-# ─── Configuración de página ─────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Dashboard CDRs — CallMyWay",
-    page_icon="📞",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Monitor de Central Telefónica", layout="wide")
 
-# ─── Estilos ─────────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-    .stMetric { background: #1e2130; border-radius: 10px; padding: 16px; border: 1px solid rgba(255,255,255,0.07); }
-    div[data-testid="metric-container"] { background: #1e2130; border-radius: 10px; padding: 16px 20px; border: 1px solid rgba(255,255,255,0.08); }
-    .pill { display:inline-block; padding:2px 10px; border-radius:20px; font-size:12px; font-weight:500; }
-    .pill-ok   { background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.3); }
-    .pill-no   { background:rgba(245,158,11,0.15);  color:#fbbf24; border:1px solid rgba(245,158,11,0.3); }
-    .pill-busy { background:rgba(239,68,68,0.15);   color:#f87171; border:1px solid rgba(239,68,68,0.3); }
-    .pill-other{ background:rgba(100,116,139,0.15); color:#94a3b8; border:1px solid rgba(100,116,139,0.3); }
-</style>
-""", unsafe_allow_html=True)
+USERNAME = "8668334"
+PASSWORD = "28719014429"
+BASE_URL = "https://callmyway.com/getCdrs.php"
 
-# ─── Sidebar — Credenciales y filtros ────────────────────────────────────────
-with st.sidebar:
-    st.title("📞 Dashboard CDRs")
-    st.caption("CallMyWay API")
-    st.divider()
-
-    st.subheader("🔐 Credenciales")
-    username = st.text_input("Usuario (7 dígitos)", placeholder="8569841", max_chars=7)
-    password = st.text_input("Contraseña (11 dígitos)", placeholder="01234567891", type="password")
-
-    st.divider()
-    st.subheader("📅 Rango de fechas")
-
-    hoy = datetime.now()
-    ayer = hoy - timedelta(days=1)
-
-    fecha_inicio = st.date_input("Fecha inicio", value=ayer.date())
-    hora_inicio  = st.time_input("Hora inicio",  value=datetime.strptime("00:00", "%H:%M").time())
-    fecha_fin    = st.date_input("Fecha fin",    value=hoy.date())
-    hora_fin     = st.time_input("Hora fin",     value=datetime.strptime("23:59", "%H:%M").time())
-
-    st.divider()
-
-    col1, col2 = st.columns(2)
-    with col1:
-        btn_consultar = st.button("⟳ Consultar", type="primary", use_container_width=True)
-    with col2:
-        btn_24h = st.button("Últimas 24h", use_container_width=True)
-
-    st.divider()
-    live_mode = st.toggle("🔴 Modo en vivo", value=False)
-    if live_mode:
-        st.caption("Actualizando cada 10 segundos")
-
-    st.divider()
-    st.caption("v1.0 · Solo uso interno")
-
-# ─── Función para consultar la API ───────────────────────────────────────────
-def fetch_cdrs(username, password, date_start=None, date_end=None, recent=False, live=False):
-    base = "https://callmyway.com/getCdrs.php"
-    params = {"username": username, "password": password, "format": "json"}
-
-    if live:
-        params["live"] = 1
-        params["fullAccount"] = 1
-    elif recent:
-        params["recent"] = 1
-    else:
-        params["dateStart"] = date_start
-        params["dateEnd"]   = date_end
-        params["ini"]       = 0
-        params["cant"]      = 5000
-
+# --- FUNCIONES DE CONSUMO DE API ---
+@st.cache_data(ttl=10)
+def get_live_cdrs():
+    url = f"https://www.callmyway.com/getCdrs.php?username={USERNAME}&password={PASSWORD}&live=1&fullAccount=1&format=json"
     try:
-        resp = requests.get(base, params=params, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        if isinstance(data, list):
-            return pd.DataFrame(data), None
-        elif isinstance(data, dict) and "error" in data:
-            return None, data["error"]
-        else:
-            for key in ("cdrs", "data", "records"):
-                if key in data:
-                    return pd.DataFrame(data[key]), None
-            return pd.DataFrame(data if isinstance(data, list) else [data]), None
-    except requests.exceptions.ConnectionError:
-        return None, "No se pudo conectar con la API de CallMyWay. Verifica tu conexión a internet."
-    except requests.exceptions.Timeout:
-        return None, "La consulta tardó demasiado. Intenta con un rango de fechas más pequeño."
+        response = requests.get(url)
+        if response.status_code == 200 and response.text.strip():
+            return response.json()
+        return []
     except Exception as e:
-        return None, str(e)
+        return []
 
-# ─── Función para normalizar columnas ────────────────────────────────────────
-def normalizar(df):
-    alias = {
-        "calldate": "fecha",  "start": "fecha",
-        "src":      "origen", "callerid": "origen", "from": "origen",
-        "dst":      "destino","destination": "destino", "to": "destino",
-        "duration": "duracion", "billsec": "duracion", "seconds": "duracion",
-        "disposition": "estado", "status": "estado", "callstatus": "estado",
-        "channel":  "canal",  "troncal": "canal", "trunk": "canal",
-    }
-    df = df.rename(columns={k: v for k, v in alias.items() if k in df.columns})
-    if "duracion" in df.columns:
-        df["duracion"] = pd.to_numeric(df["duracion"], errors="coerce").fillna(0).astype(int)
-    if "estado" in df.columns:
-        df["estado"] = df["estado"].str.upper().fillna("DESCONOCIDO")
-    return df
+def get_historical_cdrs(start_date, end_date, offset=0, limit=1000):
+    start_str = start_date.strftime("%Y-%m-%d %H:%M:%S")
+    end_str = end_date.strftime("%Y-%m-%d %H:%M:%S")
+    url = f"{BASE_URL}?username={USERNAME}&password={PASSWORD}&dateStart={start_str}&dateEnd={end_str}&ini={offset}&cant={limit}&format=json"
+    try:
+        response = requests.get(url)
+        if response.status_code == 200 and response.text.strip():
+            return response.json()
+        return []
+    except Exception as e:
+        st.error(f"Error conectando a la API: {e}")
+        return []
 
-# ─── Función para badge de estado ────────────────────────────────────────────
-def badge_estado(estado):
-    mapa = {
-        "ANSWERED":  ('<span class="pill pill-ok">ANSWERED</span>', "✅"),
-        "NO ANSWER": ('<span class="pill pill-no">NO ANSWER</span>', "⚠️"),
-        "BUSY":      ('<span class="pill pill-busy">BUSY</span>',    "🔴"),
-    }
-    return mapa.get(estado, (f'<span class="pill pill-other">{estado}</span>', "⚪"))
+# --- INTERFAZ DEL DASHBOARD ---
+st.title("📞 Dashboard Avanzado de Central Telefónica")
 
-# ─── Lógica principal ─────────────────────────────────────────────────────────
-df = None
-error_msg = None
-modo = None
+tab1, tab2 = st.tabs(["🔴 Llamadas en Vivo (Live)", "📊 Analíticas y Métricas (Histórico)"])
 
-if not username or not password:
-    st.info("👈 Ingresa tus credenciales en el panel izquierdo para comenzar.")
-    st.stop()
+with tab1:
+    st.header("Monitoreo en Tiempo Real")
+    if st.button("🔄 Actualizar Ahora (Live)"):
+        st.rerun()
+        
+    live_data = get_live_cdrs()
+    if live_data:
+        df_live = pd.DataFrame(live_data)
+        st.metric(label="Llamadas Activas", value=len(df_live))
+        st.dataframe(df_live, use_container_width=True)
+    else:
+        st.info("No hay llamadas activas en este momento.")
 
-# Modo en vivo — auto-refresh
-if live_mode:
-    modo = "live"
-    placeholder = st.empty()
-    with placeholder.container():
-        st.subheader("🔴 Llamadas en vivo")
-        with st.spinner("Consultando llamadas activas..."):
-            df, error_msg = fetch_cdrs(username, password, live=True)
-    time.sleep(10)
-    st.rerun()
+with tab2:
+    st.header("Análisis de Rendimiento y Agentes")
+    
+    col1, col2, col3 = st.columns([2, 2, 1])
+    with col1:
+        start_d = st.date_input("Fecha Inicio", datetime.now() - timedelta(days=7))
+    with col2:
+        end_d = st.date_input("Fecha Fin", datetime.now())
+    with col3:
+        limit = st.number_input("Límite (Paginación)", min_value=1, value=5000)
+        
+    start_datetime = datetime.combine(start_d, datetime.min.time())
+    end_datetime = datetime.combine(end_d, datetime.max.time())
+    
+    if st.button("🔍 Cargar Métricas"):
+        with st.spinner("Procesando datos analíticos..."):
+            hist_data = get_historical_cdrs(start_datetime, end_datetime, limit=limit)
+            
+            if hist_data:
+                df = pd.DataFrame(hist_data)
+                
+                # =====================================================================
+                # ATENCIÓN: Mapeo de columnas. 
+                # Ajusta estos nombres según los que te devuelva tu API en el JSON real.
+                # =====================================================================
+                COL_DURATION = 'duration'       # O 'billsec', 'tiempo'
+                COL_AGENT = 'src'               # O 'origen', 'callerid', 'accountcode'
+                COL_STATUS = 'disposition'      # O 'estado', 'status' (ej. ANSWERED, FAILED)
+                COL_DATE = 'calldate'           # O 'fecha', 'start'
+                
+                # Verificar si las columnas estándar existen para evitar errores
+                missing_cols = [col for col in [COL_DURATION, COL_AGENT, COL_STATUS] if col not in df.columns]
+                
+                if missing_cols:
+                    st.warning(f"⚠️ Las siguientes columnas estándar no se encontraron en el JSON de tu API: {missing_cols}. Se muestran los datos en crudo. Por favor, edita los nombres de las variables en el código.")
+                    st.dataframe(df, use_container_width=True)
+                else:
+                    # Limpieza de datos básica
+                    df[COL_DURATION] = pd.to_numeric(df[COL_DURATION], errors='coerce').fillna(0)
+                    
+                    st.markdown("---")
+                    st.subheader("📈 Métricas Generales (KPIs)")
+                    
+                    # 1. KPIs Generales
+                    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+                    total_llamadas = len(df)
+                    duracion_total_min = df[COL_DURATION].sum() / 60
+                    duracion_prom_sec = df[COL_DURATION].mean()
+                    llamadas_contestadas = len(df[df[COL_STATUS].astype(str).str.contains('ANSWER', case=False, na=False)])
+                    asr_porcentaje = (llamadas_contestadas / total_llamadas) * 100 if total_llamadas > 0 else 0
 
-elif btn_24h:
-    modo = "24h"
-    with st.spinner("Consultando últimas 24 horas..."):
-        df, error_msg = fetch_cdrs(username, password, recent=True)
+                    kpi1.metric("Total Llamadas", total_llamadas)
+                    kpi2.metric("Duración Total (Minutos)", f"{duracion_total_min:.1f}")
+                    kpi3.metric("Duración Promedio (Segundos)", f"{duracion_prom_sec:.1f}")
+                    kpi4.metric("Tasa de Respuesta (ASR)", f"{asr_porcentaje:.1f}%")
 
-elif btn_consultar:
-    modo = "historico"
-    ds = datetime.combine(fecha_inicio, hora_inicio).strftime("%Y-%m-%d %H:%M:%S")
-    de = datetime.combine(fecha_fin,    hora_fin).strftime("%Y-%m-%d %H:%M:%S")
-    with st.spinner(f"Consultando del {ds} al {de}..."):
-        df, error_msg = fetch_cdrs(username, password, date_start=ds, date_end=de)
+                    st.markdown("---")
+                    
+                    # 2. Gráficos Generales
+                    col_graf1, col_graf2 = st.columns(2)
+                    
+                    with col_graf1:
+                        # Gráfico de estado de llamadas
+                        status_counts = df[COL_STATUS].value_counts().reset_index()
+                        status_counts.columns = ['Estado', 'Cantidad']
+                        fig_status = px.pie(status_counts, values='Cantidad', names='Estado', title='Distribución del Estado de Llamadas', hole=0.4)
+                        st.plotly_chart(fig_status, use_container_width=True)
+                        
+                    with col_graf2:
+                        # Top 10 Agentes con más llamadas
+                        agent_counts = df[COL_AGENT].value_counts().head(10).reset_index()
+                        agent_counts.columns = ['Agente / Extensión', 'Llamadas']
+                        fig_agents = px.bar(agent_counts, x='Agente / Extensión', y='Llamadas', title='Top 10 Agentes por Volumen de Llamadas', color='Llamadas')
+                        st.plotly_chart(fig_agents, use_container_width=True)
 
-else:
-    st.info("👈 Configura el rango de fechas y haz clic en **Consultar** para cargar los CDRs.")
-    st.stop()
-
-# ─── Mostrar error ────────────────────────────────────────────────────────────
-if error_msg:
-    st.error(f"⚠️ {error_msg}")
-    st.stop()
-
-if df is None or df.empty:
-    st.warning("No se encontraron registros para el rango seleccionado.")
-    st.stop()
-
-# ─── Normalizar ───────────────────────────────────────────────────────────────
-df = normalizar(df)
-
-# ─── MÉTRICAS ─────────────────────────────────────────────────────────────────
-total     = len(df)
-answered  = len(df[df["estado"] == "ANSWERED"]) if "estado" in df.columns else 0
-noanswer  = len(df[df["estado"] == "NO ANSWER"]) if "estado" in df.columns else 0
-busy      = len(df[df["estado"] == "BUSY"])      if "estado" in df.columns else 0
-pct_ans   = round(answered / total * 100) if total else 0
-
-dur_ans   = df[df["estado"] == "ANSWERED"]["duracion"] if "estado" in df.columns and "duracion" in df.columns else pd.Series([], dtype=int)
-avg_dur   = int(dur_ans.mean()) if len(dur_ans) else 0
-total_min = int(dur_ans.sum() / 60) if len(dur_ans) else 0
-
-titulo = "Llamadas en vivo" if modo == "live" else f"Historial — {total:,} registros"
-st.subheader(f"{'🔴 ' if modo == 'live' else '📊 '}{titulo}")
-
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Total llamadas",    f"{total:,}")
-c2.metric("Respondidas",       f"{answered:,}",   f"{pct_ans}%")
-c3.metric("No respondidas",    f"{noanswer:,}",   f"{round(noanswer/total*100) if total else 0}%")
-c4.metric("Duración promedio", f"{avg_dur}s")
-c5.metric("Minutos totales",   f"{total_min:,}")
-
-st.divider()
-
-# ─── GRÁFICOS ─────────────────────────────────────────────────────────────────
-col_g1, col_g2 = st.columns([1, 2])
-
-with col_g1:
-    if "estado" in df.columns:
-        counts = df["estado"].value_counts().reset_index()
-        counts.columns = ["Estado", "Cantidad"]
-        color_map = {"ANSWERED": "#10b981", "NO ANSWER": "#f59e0b", "BUSY": "#ef4444", "FAILED": "#6b7280"}
-        fig_donut = px.pie(
-            counts, names="Estado", values="Cantidad",
-            hole=0.6, color="Estado", color_discrete_map=color_map,
-            title="Distribución por estado"
-        )
-        fig_donut.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#94a3b8", title_font_color="#e2e8f0",
-            legend=dict(font=dict(size=11)),
-            margin=dict(t=40, b=10, l=10, r=10)
-        )
-        fig_donut.update_traces(textfont_color="#e2e8f0")
-        st.plotly_chart(fig_donut, use_container_width=True)
-
-with col_g2:
-    if "fecha" in df.columns:
-        df["_hora"] = pd.to_datetime(df["fecha"], errors="coerce").dt.hour
-        horas = df["_hora"].value_counts().sort_index().reset_index()
-        horas.columns = ["Hora", "Llamadas"]
-        horas = horas.sort_values("Hora")
-        fig_bar = px.bar(
-            horas, x="Hora", y="Llamadas",
-            title="Llamadas por hora del día",
-            color_discrete_sequence=["#3b82f6"]
-        )
-        fig_bar.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#94a3b8", title_font_color="#e2e8f0",
-            xaxis=dict(gridcolor="rgba(255,255,255,0.05)", tickmode="linear", dtick=1),
-            yaxis=dict(gridcolor="rgba(255,255,255,0.05)"),
-            margin=dict(t=40, b=10, l=10, r=10)
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-st.divider()
-
-# ─── TABLA ────────────────────────────────────────────────────────────────────
-col_t1, col_t2, col_t3 = st.columns([2, 1, 1])
-with col_t1:
-    busqueda = st.text_input("🔍 Buscar por número o extensión", placeholder="Ej: 506, 8001...")
-with col_t2:
-    estados_disponibles = df["estado"].unique().tolist() if "estado" in df.columns else []
-    filtro_estado = st.multiselect("Filtrar por estado", options=estados_disponibles, default=estados_disponibles)
-with col_t3:
-    st.write("")
-    st.write("")
-    csv = df.to_csv(index=False).encode("utf-8-sig")
-    st.download_button("⬇ Exportar CSV", data=csv, file_name=f"cdrs_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", mime="text/csv", use_container_width=True)
-
-# Aplicar filtros
-df_vista = df.copy()
-if busqueda:
-    mask = pd.Series([False] * len(df_vista))
-    for col in ["origen", "destino", "canal"]:
-        if col in df_vista.columns:
-            mask |= df_vista[col].astype(str).str.contains(busqueda, case=False, na=False)
-    df_vista = df_vista[mask]
-if filtro_estado and "estado" in df_vista.columns:
-    df_vista = df_vista[df_vista["estado"].isin(filtro_estado)]
-
-st.caption(f"Mostrando {len(df_vista):,} de {total:,} registros")
-
-# Columnas a mostrar
-cols_mostrar = [c for c in ["fecha", "origen", "destino", "duracion", "estado", "canal"] if c in df_vista.columns]
-df_show = df_vista[cols_mostrar].copy()
-
-# Formato duración
-if "duracion" in df_show.columns:
-    df_show["duracion"] = df_show["duracion"].apply(lambda s: f"{int(s)//60}m {int(s)%60}s" if s > 0 else "—")
-
-st.dataframe(
-    df_show,
-    use_container_width=True,
-    height=450,
-    column_config={
-        "fecha":    st.column_config.TextColumn("Fecha / Hora", width="medium"),
-        "origen":   st.column_config.TextColumn("Origen"),
-        "destino":  st.column_config.TextColumn("Destino"),
-        "duracion": st.column_config.TextColumn("Duración"),
-        "estado":   st.column_config.TextColumn("Estado"),
-        "canal":    st.column_config.TextColumn("Canal / Troncal", width="large"),
-    },
-    hide_index=True
-)
+                    st.markdown("---")
+                    st.subheader("👥 Métricas Detalladas por Agente")
+                    
+                    # 3. Tabla Agrupada por Agente
+                    agent_metrics = df.groupby(COL_AGENT).agg(
+                        Total_Llamadas=(COL_DURATION, 'count'),
+                        Duracion_Total_Seg=(COL_DURATION, 'sum'),
+                        Duracion_Promedio=(COL_DURATION, 'mean')
+                    ).reset_index()
+                    
+                    # Redondear duración promedio
+                    agent_metrics['Duracion_Promedio'] = agent_metrics['Duracion_Promedio'].round(1)
+                    
+                    # Ordenar por el que hizo más llamadas
+                    agent_metrics = agent_metrics.sort_values(by='Total_Llamadas', ascending=False)
+                    
+                    st.dataframe(agent_metrics, use_container_width=True)
+                    
+            else:
+                st.warning("No se encontraron registros o hubo un error en la consulta.")
