@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
 
-# ─── Agentes ──────────────────────────────────────────────────────────────────
+# ─── Configuración ────────────────────────────────────────────────────────────
 AGENTES = {
     "8668106": "Central Virtual",
     "8668109": "Edwin Loyola",
@@ -17,8 +17,18 @@ AGENTES = {
     "8672537": "Victor Figueroa",
 }
 
+END_REASONS = {
+    "OK": "Completada",
+    "CANCELLED": "Cancelada",
+    "NO_ANSWER": "Sin respuesta",
+    "TEMPORARILY_UNAVAILABLE": "No disponible",
+    "NOT_FOUND": "No encontrado",
+    "DECLINE": "Rechazada",
+    "SERVICE_UNAVAILABLE": "Servicio no disponible",
+}
+
 st.set_page_config(
-    page_title="CallCenter — Panel de Control",
+    page_title="CallCenter · Panel de Control",
     page_icon="📡",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -26,47 +36,111 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-html, body, [class*="css"] { font-family: 'Space Grotesk', sans-serif !important; }
-.stApp { background: #080C14; }
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+html, body, [class*="css"] { font-family: 'DM Sans', sans-serif !important; }
+.stApp { background: #07090F; }
 .stApp > header { background: transparent !important; }
-[data-testid="stSidebar"] { background: #0D1220 !important; border-right: 1px solid rgba(0,200,255,0.1); }
-[data-testid="stSidebar"] * { color: #A0B4C8 !important; }
-[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 { color: #E0EEF8 !important; }
-[data-testid="stSidebar"] .stButton button { background: linear-gradient(135deg,#0077FF,#00C8FF) !important; border: none !important; color: white !important; font-weight: 600 !important; border-radius: 8px !important; }
-[data-testid="metric-container"] { background: linear-gradient(135deg,#0D1A2D,#101E35) !important; border: 1px solid rgba(0,150,255,0.15) !important; border-radius: 12px !important; padding: 18px 20px !important; position: relative; overflow: hidden; }
-[data-testid="metric-container"]::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background: linear-gradient(90deg,transparent,#0077FF,#00C8FF,transparent); }
-[data-testid="metric-container"] [data-testid="stMetricLabel"] { color: #6A8AAA !important; font-size: 11px !important; letter-spacing: 1px; text-transform: uppercase; }
-[data-testid="metric-container"] [data-testid="stMetricValue"] { color: #E0F4FF !important; font-size: 26px !important; font-weight: 600 !important; }
-h1,h2,h3 { color: #E0EEF8 !important; font-family:'Space Grotesk',sans-serif !important; }
-p, li, span { color: #A0B4C8 !important; }
-.stTabs [data-baseweb="tab-list"] { background: #0D1220 !important; border-radius: 10px; padding: 4px; gap: 4px; border: 1px solid rgba(0,200,255,0.1); }
-.stTabs [data-baseweb="tab"] { background: transparent !important; color: #6A8AAA !important; border-radius: 7px !important; font-weight: 500; }
-.stTabs [aria-selected="true"] { background: linear-gradient(135deg,#0D2A4A,#0D3A5A) !important; color: #00C8FF !important; }
+
+section[data-testid="stSidebar"] {
+    background: #0C0F1A !important;
+    border-right: 1px solid rgba(255,255,255,0.06) !important;
+}
+section[data-testid="stSidebar"] * { color: #8899AA !important; }
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3,
+section[data-testid="stSidebar"] strong { color: #CCD8E8 !important; }
+section[data-testid="stSidebar"] label { color: #6677AA !important; font-size: 11px !important; letter-spacing: 0.5px; }
+section[data-testid="stSidebar"] input {
+    background: #12182A !important;
+    border: 1px solid rgba(100,130,200,0.2) !important;
+    color: #CCD8E8 !important;
+    font-family: 'DM Mono', monospace !important;
+}
+section[data-testid="stSidebar"] .stButton button {
+    background: linear-gradient(135deg, #1A3A6A, #0A2A5A) !important;
+    border: 1px solid rgba(80,140,220,0.4) !important;
+    color: #7AB8FF !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-weight: 500 !important;
+}
+section[data-testid="stSidebar"] .stButton button:hover {
+    background: linear-gradient(135deg, #204080, #102060) !important;
+    border-color: rgba(100,180,255,0.6) !important;
+    color: #AAD4FF !important;
+}
+
+[data-testid="metric-container"] {
+    background: #0C0F1A !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 10px !important;
+    padding: 16px 18px !important;
+}
+[data-testid="metric-container"] [data-testid="stMetricLabel"] {
+    color: #445566 !important;
+    font-size: 10px !important;
+    letter-spacing: 1.5px !important;
+    text-transform: uppercase !important;
+    font-family: 'DM Mono', monospace !important;
+}
+[data-testid="metric-container"] [data-testid="stMetricValue"] {
+    color: #CCD8E8 !important;
+    font-size: 24px !important;
+    font-weight: 300 !important;
+    letter-spacing: -0.5px !important;
+}
+[data-testid="metric-container"] [data-testid="stMetricDelta"] { font-size: 11px !important; }
+
+h1, h2, h3 { color: #CCD8E8 !important; font-family: 'DM Sans', sans-serif !important; }
+p, li, span { color: #8899AA !important; }
+
+.stTabs [data-baseweb="tab-list"] {
+    background: transparent !important;
+    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+    padding: 0 !important;
+    gap: 0 !important;
+}
+.stTabs [data-baseweb="tab"] {
+    background: transparent !important;
+    color: #445566 !important;
+    border-radius: 0 !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.5px !important;
+    padding: 10px 20px !important;
+    border-bottom: 2px solid transparent !important;
+}
+.stTabs [aria-selected="true"] {
+    color: #7AB8FF !important;
+    border-bottom: 2px solid #3A80D0 !important;
+    background: transparent !important;
+}
 .stTabs [data-baseweb="tab-border"] { display: none !important; }
 .stTabs [data-baseweb="tab-panel"] { padding-top: 20px !important; }
-.stDownloadButton button { background: transparent !important; border: 1px solid rgba(0,200,255,0.3) !important; color: #00C8FF !important; border-radius:8px !important; }
-.agent-card { background: linear-gradient(135deg,#0D1A2D 0%,#0A1525 100%); border: 1px solid rgba(0,150,255,0.15); border-radius: 14px; padding: 18px; margin-bottom: 12px; position: relative; overflow: hidden; }
-.agent-card::after { content:''; position:absolute; top:0; left:0; width:3px; height:100%; background: linear-gradient(180deg,#0077FF,#00C8FF); border-radius:14px 0 0 14px; }
-.agent-name { color: #E0F0FF !important; font-size:15px; font-weight:600; margin-bottom:4px; }
-.agent-id { color: #4A6A8A !important; font-size:11px; font-family:'JetBrains Mono',monospace; letter-spacing:1px; }
-@keyframes fadeInUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
-.fade-in { animation: fadeInUp 0.5s ease forwards; }
-.dash-header { background: linear-gradient(90deg,#0D1A2D,#080C14); border: 1px solid rgba(0,200,255,0.1); border-radius:14px; padding:20px 28px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden; }
-.dash-header::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background: linear-gradient(90deg,transparent,#0077FF,#00C8FF,transparent); }
-.dash-title { color:#E0F4FF !important; font-size:22px; font-weight:700; letter-spacing:-0.5px; }
-.dash-subtitle { color:#4A7A9A !important; font-size:13px; font-family:'JetBrains Mono',monospace; }
-.live-badge { display:inline-flex; align-items:center; gap:6px; background:rgba(255,50,50,0.15); border:1px solid rgba(255,80,80,0.4); color:#FF6B6B !important; padding:5px 12px; border-radius:20px; font-size:12px; font-weight:600; }
-.live-dot { width:7px;height:7px;border-radius:50%;background:#FF4444;animation:blink 1s infinite;display:inline-block; }
-.online-badge { display:inline-flex; align-items:center; gap:6px; background:rgba(0,200,120,0.12); border:1px solid rgba(0,220,140,0.3); color:#00DC8C !important; padding:5px 12px; border-radius:20px; font-size:12px; font-weight:600; }
-.online-dot { width:7px;height:7px;border-radius:50%;background:#00DC8C;animation:blink 2s infinite;display:inline-block; }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
-.section-title { color:#00C8FF !important; font-size:11px; font-weight:600; letter-spacing:2px; text-transform:uppercase; margin-bottom:14px; padding-bottom:8px; border-bottom:1px solid rgba(0,200,255,0.1); }
-.stat-green { color:#00E896 !important; } .stat-yellow { color:#FFB347 !important; } .stat-red { color:#FF6B6B !important; } .stat-blue { color:#00C8FF !important; }
+
+.stDownloadButton button {
+    background: transparent !important;
+    border: 1px solid rgba(100,130,200,0.25) !important;
+    color: #6688BB !important;
+    font-size: 12px !important;
+}
+.stDownloadButton button:hover {
+    border-color: rgba(100,160,255,0.5) !important;
+    color: #88AADD !important;
+}
+
+.stDataFrame { border: 1px solid rgba(255,255,255,0.06) !important; border-radius: 10px !important; }
+
+.stMultiSelect span[data-baseweb="tag"] {
+    background: #12182A !important;
+    color: #6688BB !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+# ─── Helpers de API ────────────────────────────────────────────────────────────
 def fetch_cdrs(username, password, date_start=None, date_end=None, recent=False, live=False):
     base   = "https://callmyway.com/getCdrs.php"
     params = {"username": username, "password": password, "format": "json"}
@@ -77,358 +151,617 @@ def fetch_cdrs(username, password, date_start=None, date_end=None, recent=False,
     else:
         params.update({"dateStart": date_start, "dateEnd": date_end, "ini": 0, "cant": 5000})
     try:
-        r = requests.get(base, params=params, timeout=15)
+        r = requests.get(base, params=params, timeout=20)
         r.raise_for_status()
         data = r.json()
-        if isinstance(data, list):
-            return pd.DataFrame(data), None
         if isinstance(data, dict) and "error" in data:
             return None, data["error"]
-        for k in ("cdrs","data","records"):
-            if k in data:
-                return pd.DataFrame(data[k]), None
-        return pd.DataFrame([data] if data else []), None
-    except requests.exceptions.ConnectionError:
-        return None, "Sin conexion con CallMyWay."
+        cdrs = data.get("cdrs", data) if isinstance(data, dict) else data
+        return pd.DataFrame(cdrs) if cdrs else pd.DataFrame(), None
     except requests.exceptions.Timeout:
-        return None, "Timeout. Intenta con un rango menor."
+        return None, "Timeout. Intenta con un rango de fechas menor."
     except Exception as e:
         return None, str(e)
 
-def normalizar(df):
-    if df is None or df.empty:
-        return pd.DataFrame()
-    alias = {
-        "calldate":"fecha","start":"fecha",
-        "src":"origen","callerid":"origen","from":"origen",
-        "dst":"destino","destination":"destino","to":"destino",
-        "duration":"duracion","billsec":"duracion","seconds":"duracion",
-        "disposition":"estado","status":"estado","callstatus":"estado",
-        "channel":"canal","troncal":"canal","trunk":"canal",
-    }
-    df = df.rename(columns={k:v for k,v in alias.items() if k in df.columns})
-    if "duracion" in df.columns:
-        df["duracion"] = pd.to_numeric(df["duracion"], errors="coerce").fillna(0).astype(int)
-    if "estado" in df.columns:
-        df["estado"] = df["estado"].str.upper().fillna("DESCONOCIDO")
-    if "origen" in df.columns:
-        df["origen"] = df["origen"].astype(str).str.strip()
-    return df
 
-def identificar_agente(df):
-    if "origen" not in df.columns:
-        return df
-    df = df.copy()
-    df["agente_nombre"] = df["origen"].map(AGENTES).fillna("Externo")
-    return df
+# ─── Lógica de deduplicación y análisis ───────────────────────────────────────
+def procesar_cdrs(df_raw):
+    """
+    La API devuelve múltiples registros por llamada (intentos de ring al agente).
+    Necesitamos:
+      1. Llamadas únicas (por original_callid)
+      2. Determinar si fue atendida
+      3. Identificar qué agente atendió
+      4. Calcular tiempo de espera real
+    """
+    if df_raw is None or df_raw.empty:
+        return pd.DataFrame(), pd.DataFrame()
 
-def stats_agente(df, aid, nombre):
-    sub = df[df["origen"].astype(str) == str(aid)]
-    total    = len(sub)
-    answered = int((sub["estado"] == "ANSWERED").sum()) if "estado" in sub.columns else 0
-    noanswer = int((sub["estado"] == "NO ANSWER").sum()) if "estado" in sub.columns else 0
-    busy     = int((sub["estado"] == "BUSY").sum())      if "estado" in sub.columns else 0
-    durs     = sub[sub["estado"]=="ANSWERED"]["duracion"] if "estado" in sub.columns and "duracion" in sub.columns else pd.Series([], dtype=int)
-    avg_dur  = int(durs.mean()) if len(durs) else 0
-    pct      = round(answered/total*100) if total else 0
-    return {"id":aid,"nombre":nombre,"total":total,"answered":answered,
-            "noanswer":noanswer,"busy":busy,"avg_dur":avg_dur,"pct":pct}
+    df = df_raw.copy()
 
-def color_bar(pct):
-    if pct >= 70: return "#00E896"
-    if pct >= 40: return "#FFB347"
-    return "#FF6B6B"
+    # Normalizar campos numéricos
+    for col in ["duration", "ring_time"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+
+    # Timestamps
+    for col in ["detect_time", "connect_time", "disconnect_time"]:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col].replace("", None), errors="coerce")
+
+    # Resolver nombre del agente receptor
+    df["agente_nombre"] = df["name_endpoint_dnis"].fillna("").replace("", None)
+    df.loc[df["agente_nombre"].isna(), "agente_nombre"] = df.loc[df["agente_nombre"].isna(), "dnis_user"].map(AGENTES)
+    df["agente_nombre"] = df["agente_nombre"].fillna("Desconocido")
+
+    # Resolver nombre del agente origen
+    df["caller_nombre"] = df["name_endpoint_ani"].fillna("").replace("", None)
+    df.loc[df["caller_nombre"].isna(), "caller_nombre"] = df.loc[df["caller_nombre"].isna(), "ani_user"].map(AGENTES)
+
+    # ── VISTA DETALLE: todos los registros (para tabla de intentos)
+    df_all = df.copy()
+
+    # ── VISTA LLAMADAS ÚNICAS: agrupar por original_callid
+    # Para cada llamada única tomamos el registro "padre" (ref_callid == "0" o el que tiene mayor duration)
+    if "original_callid" not in df.columns:
+        return df_all, df_all
+
+    # Separar registros padre (ref_callid == 0 o "0") de intentos de ring
+    df["ref_callid"] = df["ref_callid"].astype(str).str.strip()
+    df_padres = df[df["ref_callid"] == "0"].copy()
+
+    # Para cada original_callid, encontrar si algún intento fue atendido
+    atendidas = df[df["duration"] > 0].groupby("original_callid").agg(
+        agente_atendio=("agente_nombre", "first"),
+        duracion_real=("duration", "max"),
+        connect_time_real=("connect_time", "first"),
+    ).reset_index()
+
+    # Tiempo de espera = suma de ring_time de intentos fallidos antes de que conteste
+    espera = df.groupby("original_callid").agg(
+        total_ring=("ring_time", "sum"),
+        n_intentos=("callid", "count"),
+    ).reset_index()
+
+    # Join
+    llamadas = df_padres.merge(atendidas, on="original_callid", how="left")
+    llamadas = llamadas.merge(espera, on="original_callid", how="left")
+
+    llamadas["atendida"] = llamadas["duracion_real"].notna() & (llamadas["duracion_real"] > 0)
+    llamadas["duracion_real"] = llamadas["duracion_real"].fillna(0).astype(int)
+    llamadas["agente_atendio"] = llamadas["agente_atendio"].fillna("No atendida")
+    llamadas["end_reason_es"] = llamadas["end_reason"].map(END_REASONS).fillna(llamadas["end_reason"])
+    llamadas["hora"] = llamadas["detect_time"].dt.hour
+    llamadas["fecha"] = llamadas["detect_time"].dt.date
+    llamadas["dia_semana"] = llamadas["detect_time"].dt.day_name()
+
+    return llamadas, df_all
+
 
 def fmt_dur(s):
-    s = int(s)
-    if s == 0: return "—"
+    s = int(s) if s else 0
+    if s <= 0: return "—"
+    if s < 60: return f"{s}s"
     return f"{s//60}m {s%60}s"
 
-# ─── Sidebar ──────────────────────────────────────────────────────────────────
+
+# ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### 📡 CallCenter Panel")
+    st.markdown("## 📡 CallCenter")
     st.markdown("---")
-    st.markdown("**🔐 Credenciales**")
-    username = st.text_input("Usuario", placeholder="7 digitos")
-    password = st.text_input("Contrasena", type="password")
+
+    username = st.text_input("Usuario", placeholder="8668334")
+    password = st.text_input("Contraseña", type="password")
+
     st.markdown("---")
-    st.markdown("**📅 Periodo**")
     hoy  = datetime.now()
     ayer = hoy - timedelta(days=1)
-    fi   = st.date_input("Desde", value=ayer.date())
-    hi   = st.time_input("Hora inicio", value=datetime.strptime("00:00","%H:%M").time())
-    ff   = st.date_input("Hasta",  value=hoy.date())
-    hf   = st.time_input("Hora fin",   value=datetime.strptime("23:59","%H:%M").time())
-    st.markdown("---")
-    c1,c2 = st.columns(2)
-    with c1:
-        btn_consultar = st.button("Consultar", type="primary", use_container_width=True)
-    with c2:
-        btn_24h = st.button("Hoy", use_container_width=True)
-    st.markdown("---")
-    live_mode = st.toggle("🔴 Modo en vivo", value=False)
-    if live_mode:
-        intervalo = st.slider("Actualizar cada (seg)", 5, 60, 10)
-    else:
-        intervalo = 10
-    st.markdown("---")
-    st.markdown("**👥 Agentes**")
-    for aid, nombre in AGENTES.items():
-        st.markdown(f"<div style='font-size:12px;padding:3px 0'>▸ <span style='color:#A0C8E8 !important'>{nombre}</span></div>", unsafe_allow_html=True)
+    fi = st.date_input("Desde", value=ayer.date())
+    hi = st.time_input("Hora inicio", value=datetime.strptime("00:00", "%H:%M").time())
+    ff = st.date_input("Hasta",  value=hoy.date())
+    hf = st.time_input("Hora fin", value=datetime.strptime("23:59", "%H:%M").time())
 
-# ─── Sesion ───────────────────────────────────────────────────────────────────
-if "df" not in st.session_state:
-    st.session_state.df     = None
-    st.session_state.label  = ""
-    st.session_state.error  = None
-    st.session_state.loaded = False
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    with c1: btn_ok  = st.button("Consultar", type="primary", use_container_width=True)
+    with c2: btn_hoy = st.button("Hoy",       use_container_width=True)
+
+    st.markdown("---")
+    live_mode = st.toggle("🔴 En vivo", value=False)
+    if live_mode:
+        intervalo = st.slider("Refrescar (seg)", 5, 60, 15)
+    else:
+        intervalo = 15
+
+    st.markdown("---")
+    st.markdown("**Agentes**")
+    for aid, nombre in AGENTES.items():
+        st.markdown(
+            f"<div style='font-size:11px;padding:2px 0;font-family:DM Mono,monospace'>"
+            f"<span style='color:#334466'>{aid}</span> "
+            f"<span style='color:#8899AA'>{nombre}</span></div>",
+            unsafe_allow_html=True
+        )
+
+
+# ─── Estado de sesión ─────────────────────────────────────────────────────────
+if "llamadas" not in st.session_state:
+    st.session_state.llamadas  = None
+    st.session_state.df_all    = None
+    st.session_state.label     = ""
+    st.session_state.error     = None
+    st.session_state.loaded    = False
 
 if not username or not password:
-    st.markdown('<div class="dash-header fade-in"><div><div class="dash-title">📡 Panel de Control de Llamadas</div><div class="dash-subtitle">CallMyWay CDR Analytics</div></div></div>', unsafe_allow_html=True)
-    st.info("👈 Ingresa tus credenciales en el panel izquierdo para comenzar.")
+    st.markdown("""
+    <div style='padding:80px 0;text-align:center'>
+        <div style='font-size:48px;margin-bottom:16px'>📡</div>
+        <div style='color:#334466;font-size:18px;font-weight:300'>Panel de Control de Llamadas</div>
+        <div style='color:#223344;font-size:13px;margin-top:8px;font-family:DM Mono,monospace'>
+            Ingresa tus credenciales para comenzar
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     st.stop()
+
+# ─── Cargar datos ─────────────────────────────────────────────────────────────
+def cargar(df_raw, label):
+    if df_raw is None: return
+    llamadas, df_all = procesar_cdrs(df_raw)
+    st.session_state.llamadas = llamadas
+    st.session_state.df_all   = df_all
+    st.session_state.label    = label
+    st.session_state.error    = None
+    st.session_state.loaded   = True
 
 if live_mode:
     with st.spinner(""):
         df_raw, err = fetch_cdrs(username, password, live=True)
-    if err:
-        st.error(f"Error: {err}")
-        st.stop()
-    st.session_state.df     = normalizar(df_raw)
-    st.session_state.label  = f"En vivo {datetime.now().strftime('%H:%M:%S')}"
-    st.session_state.loaded = True
+    if err: st.error(f"⚠ {err}"); st.stop()
+    cargar(df_raw, f"EN VIVO · {datetime.now().strftime('%H:%M:%S')}")
 
-elif btn_consultar:
+elif btn_ok:
     ds = datetime.combine(fi, hi).strftime("%Y-%m-%d %H:%M:%S")
     de = datetime.combine(ff, hf).strftime("%Y-%m-%d %H:%M:%S")
     with st.spinner("Consultando API..."):
         df_raw, err = fetch_cdrs(username, password, date_start=ds, date_end=de)
-    if err:
-        st.session_state.error = err
-    else:
-        st.session_state.df     = normalizar(df_raw)
-        st.session_state.label  = f"{fi.strftime('%d/%m')} a {ff.strftime('%d/%m/%Y')}"
-        st.session_state.error  = None
-        st.session_state.loaded = True
+    if err: st.session_state.error = err
+    else: cargar(df_raw, f"{fi.strftime('%d/%m')} – {ff.strftime('%d/%m/%Y')}")
 
-elif btn_24h:
-    with st.spinner("Consultando ultimas 24h..."):
+elif btn_hoy:
+    with st.spinner("Consultando..."):
         df_raw, err = fetch_cdrs(username, password, recent=True)
-    if err:
-        st.session_state.error = err
-    else:
-        st.session_state.df     = normalizar(df_raw)
-        st.session_state.label  = "Ultimas 24 horas"
-        st.session_state.error  = None
-        st.session_state.loaded = True
+    if err: st.session_state.error = err
+    else: cargar(df_raw, "Últimas 24 horas")
 
 if st.session_state.error:
-    st.error(f"Error: {st.session_state.error}")
+    st.error(f"⚠ {st.session_state.error}")
     st.stop()
 
-if not st.session_state.loaded or st.session_state.df is None:
-    st.markdown('<div class="dash-header fade-in"><div><div class="dash-title">📡 Panel de Control de Llamadas</div><div class="dash-subtitle">CallMyWay CDR Analytics</div></div></div>', unsafe_allow_html=True)
-    st.info("Configura el periodo y pulsa Consultar.")
+if not st.session_state.loaded:
+    st.info("Configura el período y pulsa **Consultar** para cargar los CDRs.")
     st.stop()
 
 # ─── Datos ────────────────────────────────────────────────────────────────────
-df  = identificar_agente(st.session_state.df)
-lbl = st.session_state.label
+llamadas = st.session_state.llamadas
+df_all   = st.session_state.df_all
+lbl      = st.session_state.label
 
-total    = len(df)
-answered = int((df["estado"] == "ANSWERED").sum()) if "estado" in df.columns else 0
-noanswer = int((df["estado"] == "NO ANSWER").sum()) if "estado" in df.columns else 0
-busy     = int((df["estado"] == "BUSY").sum())      if "estado" in df.columns else 0
-durs     = df[df["estado"]=="ANSWERED"]["duracion"] if "estado" in df.columns and "duracion" in df.columns else pd.Series([], dtype=int)
-avg_dur  = int(durs.mean()) if len(durs) else 0
-total_min= int(durs.sum()/60) if len(durs) else 0
-pct_ans  = round(answered/total*100) if total else 0
+if llamadas is None or llamadas.empty:
+    st.warning("No se encontraron registros para el período seleccionado.")
+    st.stop()
 
-# ─── Header ───────────────────────────────────────────────────────────────────
-badge = '<span class="live-badge"><span class="live-dot"></span> EN VIVO</span>' if live_mode else f'<span class="online-badge"><span class="online-dot"></span> {lbl}</span>'
+# ─── KPIs globales ────────────────────────────────────────────────────────────
+total         = len(llamadas)
+atendidas     = int(llamadas["atendida"].sum()) if "atendida" in llamadas.columns else 0
+no_atendidas  = total - atendidas
+pct_atencion  = round(atendidas / total * 100) if total else 0
+
+dur_ok        = llamadas[llamadas["atendida"] == True]["duracion_real"] if "duracion_real" in llamadas.columns else pd.Series([], dtype=int)
+avg_dur       = int(dur_ok.mean()) if len(dur_ok) else 0
+total_min     = int(dur_ok.sum() / 60) if len(dur_ok) else 0
+
+espera_ok     = llamadas[llamadas["atendida"] == True]["total_ring"] if "total_ring" in llamadas.columns else pd.Series([], dtype=int)
+avg_espera    = int(espera_ok.mean()) if len(espera_ok) else 0
+
+incoming_u    = len(llamadas[llamadas["type"] == "incoming"])  if "type" in llamadas.columns else 0
+outgoing_u    = len(llamadas[llamadas["type"] == "outgoing"])  if "type" in llamadas.columns else 0
+
+# ─── HEADER ───────────────────────────────────────────────────────────────────
+live_badge = "🔴 EN VIVO" if live_mode else lbl
 st.markdown(f"""
-<div class="dash-header fade-in">
+<div style='display:flex;align-items:center;justify-content:space-between;
+            padding:14px 0 20px;border-bottom:1px solid rgba(255,255,255,0.05);margin-bottom:20px'>
     <div>
-        <div class="dash-title">📡 Panel de Control de Llamadas</div>
-        <div class="dash-subtitle" style="margin-top:4px">CallMyWay · {total:,} registros</div>
+        <div style='font-size:20px;font-weight:300;color:#CCD8E8;letter-spacing:-0.3px'>
+            Panel de Control · Llamadas
+        </div>
+        <div style='font-size:11px;color:#334466;font-family:DM Mono,monospace;margin-top:3px'>
+            {total:,} registros únicos · {live_badge}
+        </div>
     </div>
-    <div>{badge}</div>
+    <div style='font-size:11px;color:#223344;font-family:DM Mono,monospace'>
+        CallMyWay API · {username}
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ─── Metricas ─────────────────────────────────────────────────────────────────
-m1,m2,m3,m4,m5,m6 = st.columns(6)
-m1.metric("Total llamadas",    f"{total:,}")
-m2.metric("Respondidas",       f"{answered:,}",  f"{pct_ans}%")
-m3.metric("No respondidas",    f"{noanswer:,}")
-m4.metric("Ocupado / Fallo",   f"{busy:,}")
-m5.metric("Duracion promedio", fmt_dur(avg_dur))
-m6.metric("Minutos totales",   f"{total_min:,}")
+# ─── MÉTRICAS ─────────────────────────────────────────────────────────────────
+c1,c2,c3,c4,c5,c6,c7 = st.columns(7)
+c1.metric("Total llamadas",    f"{total:,}")
+c2.metric("Atendidas",         f"{atendidas:,}",  f"{pct_atencion}%")
+c3.metric("No atendidas",      f"{no_atendidas:,}")
+c4.metric("% Atención",        f"{pct_atencion}%")
+c5.metric("Duración prom.",    fmt_dur(avg_dur))
+c6.metric("Espera prom.",      fmt_dur(avg_espera))
+c7.metric("Minutos totales",   f"{total_min:,}")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ─── Tabs ─────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs(["👥  Agentes", "📊  Analisis", "📋  Registros", "📈  Tendencias"])
-
-PLOT_STYLE = dict(
-    plot_bgcolor="#0D1220", paper_bgcolor="#0D1220",
-    font=dict(color="#A0B4C8", family="Space Grotesk"),
-    margin=dict(t=10,b=40,l=10,r=10)
+# ─── ESTILO PLOTLY ────────────────────────────────────────────────────────────
+PLOT = dict(
+    paper_bgcolor="#07090F", plot_bgcolor="#07090F",
+    font=dict(color="#445566", family="DM Sans"),
+    margin=dict(t=10, b=30, l=10, r=10),
 )
-COLOR_MAP = {"ANSWERED":"#00E896","NO ANSWER":"#FFB347","BUSY":"#FF6B6B","FAILED":"#4A6A8A"}
+COLORS = {
+    "atendida_si": "#3A7A5A",
+    "atendida_no": "#7A3A3A",
+    "OK": "#3A7A5A", "CANCELLED": "#4A5A7A",
+    "NO_ANSWER": "#7A6A3A", "TEMPORARILY_UNAVAILABLE": "#5A3A7A",
+    "NOT_FOUND": "#7A4A3A", "DECLINE": "#7A3A5A",
+}
 
-# ── TAB 1 Agentes ─────────────────────────────────────────────────────────────
+# ─── TABS ─────────────────────────────────────────────────────────────────────
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "RESUMEN", "AGENTES", "ANÁLISIS", "REGISTROS", "DIAGNÓSTICO"
+])
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 1: RESUMEN
+# ════════════════════════════════════════════════════════════════════════════════
 with tab1:
-    stats_list = sorted(
-        [stats_agente(df, aid, nombre) for aid, nombre in AGENTES.items()],
-        key=lambda x: x["total"], reverse=True
-    )
-    st.markdown('<div class="section-title">Rendimiento por agente</div>', unsafe_allow_html=True)
-    cols_cards = st.columns(3)
-    ranks = ["🥇","🥈","🥉"]
-    for i, s in enumerate(stats_list):
-        col = cols_cards[i % 3]
-        bc  = color_bar(s["pct"])
-        rnk = ranks[i] if i < 3 else f"#{i+1}"
-        with col:
-            st.markdown(f"""
-            <div class="agent-card fade-in" style="animation-delay:{i*0.08}s">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-                    <div>
-                        <div class="agent-name">{rnk} {s['nombre']}</div>
-                        <div class="agent-id">ID: {s['id']}</div>
-                    </div>
-                    <div style="font-size:26px;opacity:0.5">📞</div>
-                </div>
-                <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-                    <span style="font-size:12px;color:#00C8FF">📥 {s['total']}</span>
-                    <span style="font-size:12px;color:#00E896">✅ {s['answered']}</span>
-                    <span style="font-size:12px;color:#FFB347">❌ {s['noanswer']}</span>
-                </div>
-                <div style="margin-bottom:6px">
-                    <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-                        <span style="color:#4A6A8A">Tasa de respuesta</span>
-                        <span style="color:{bc};font-weight:600">{s['pct']}%</span>
-                    </div>
-                    <div style="background:rgba(255,255,255,0.05);border-radius:4px;height:5px;overflow:hidden">
-                        <div style="width:{s['pct']}%;height:100%;background:{bc};border-radius:4px"></div>
-                    </div>
-                </div>
-                <div style="font-size:11px;color:#4A6A8A;margin-top:8px">Duracion media: <span style="color:#A0C0E0">{fmt_dur(s['avg_dur'])}</span></div>
-            </div>
-            """, unsafe_allow_html=True)
+    col_l, col_r = st.columns([1.2, 2])
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Comparativa de llamadas por agente</div>', unsafe_allow_html=True)
-    df_stats = pd.DataFrame(stats_list)
-    if not df_stats.empty and df_stats["total"].sum() > 0:
-        fig_ag = go.Figure()
-        for estado_col, color_val, nombre_col in [("answered","#00E896","Respondidas"),("noanswer","#FFB347","No respondidas"),("busy","#FF6B6B","Ocupado")]:
-            fig_ag.add_trace(go.Bar(name=nombre_col, x=df_stats["nombre"], y=df_stats[estado_col], marker_color=color_val, marker_line_width=0))
-        fig_ag.update_layout(barmode="stack", height=300, legend=dict(orientation="h",y=-0.2,font_size=11), **PLOT_STYLE)
-        st.plotly_chart(fig_ag, use_container_width=True)
-
-# ── TAB 2 Analisis ────────────────────────────────────────────────────────────
-with tab2:
-    col_l, col_r = st.columns(2)
     with col_l:
-        st.markdown('<div class="section-title">Distribucion por estado</div>', unsafe_allow_html=True)
-        if "estado" in df.columns:
-            ec = df["estado"].value_counts().reset_index()
-            ec.columns = ["Estado","Cantidad"]
-            fig_pie = px.pie(ec, names="Estado", values="Cantidad", color="Estado", color_discrete_map=COLOR_MAP, hole=0.55)
-            fig_pie.update_layout(height=300, legend=dict(orientation="h",y=-0.12,font_size=11), **PLOT_STYLE)
-            fig_pie.update_traces(textfont_color="white", textfont_size=11)
-            st.plotly_chart(fig_pie, use_container_width=True)
+        # Donut atendidas vs no atendidas
+        fig_donut = go.Figure(data=[go.Pie(
+            labels=["Atendidas", "No atendidas"],
+            values=[atendidas, no_atendidas],
+            hole=0.68,
+            marker=dict(colors=["#2A6A4A", "#6A2A2A"], line=dict(width=0)),
+            textfont=dict(color="#CCD8E8", size=11),
+        )])
+        fig_donut.add_annotation(
+            text=f"<b>{pct_atencion}%</b>", x=0.5, y=0.52,
+            font=dict(size=28, color="#CCD8E8"), showarrow=False
+        )
+        fig_donut.add_annotation(
+            text="atención", x=0.5, y=0.38,
+            font=dict(size=11, color="#445566"), showarrow=False
+        )
+        fig_donut.update_layout(
+            height=220, showlegend=True,
+            legend=dict(font=dict(size=11, color="#445566"), orientation="h", y=-0.05),
+            **PLOT
+        )
+        st.plotly_chart(fig_donut, use_container_width=True)
+
+        # Entrantes vs salientes
+        if "type" in llamadas.columns:
+            tc = llamadas["type"].value_counts()
+            fig_tipo = go.Figure(data=[go.Bar(
+                x=tc.index.map({"incoming": "Entrantes", "outgoing": "Salientes"}),
+                y=tc.values,
+                marker_color=["#2A4A6A", "#2A6A4A"],
+                marker_line_width=0,
+            )])
+            fig_tipo.update_layout(height=160, **PLOT,
+                xaxis=dict(gridcolor="rgba(255,255,255,0.03)"),
+                yaxis=dict(gridcolor="rgba(255,255,255,0.03)"),
+            )
+            st.plotly_chart(fig_tipo, use_container_width=True)
+
     with col_r:
-        st.markdown('<div class="section-title">Llamadas por hora del dia</div>', unsafe_allow_html=True)
-        if "fecha" in df.columns:
-            df["_hora"] = pd.to_datetime(df["fecha"], errors="coerce").dt.hour
-            horas = df.groupby("_hora").size().reset_index(name="llamadas").sort_values("_hora")
-            max_h = horas["llamadas"].max()
-            fig_h = px.bar(horas, x="_hora", y="llamadas")
-            fig_h.update_traces(marker_color=["#00C8FF" if v==max_h else "#0055CC" for v in horas["llamadas"]], marker_line_width=0)
-            fig_h.update_layout(height=300, xaxis=dict(title="Hora",gridcolor="rgba(255,255,255,0.03)",dtick=1,tickfont_size=10), yaxis=dict(title="",gridcolor="rgba(0,150,255,0.07)"), **PLOT_STYLE)
+        # Llamadas por hora
+        if "hora" in llamadas.columns:
+            horas = llamadas.groupby(["hora", "atendida"]).size().reset_index(name="n")
+            horas["estado"] = horas["atendida"].map({True: "Atendida", False: "No atendida"})
+            fig_h = px.bar(horas, x="hora", y="n", color="estado",
+                color_discrete_map={"Atendida": "#2A5A3A", "No atendida": "#5A2A2A"},
+                barmode="stack",
+            )
+            fig_h.update_layout(height=200, **PLOT,
+                xaxis=dict(title="Hora", dtick=1, gridcolor="rgba(255,255,255,0.03)", tickfont_size=10),
+                yaxis=dict(gridcolor="rgba(255,255,255,0.03)", title=""),
+                legend=dict(font_size=11, orientation="h", y=-0.2),
+            )
+            fig_h.update_traces(marker_line_width=0)
             st.plotly_chart(fig_h, use_container_width=True)
 
-    st.markdown('<div class="section-title">Duracion promedio por agente (segundos)</div>', unsafe_allow_html=True)
-    df_dur = pd.DataFrame(stats_list)
-    df_dur = df_dur[df_dur["avg_dur"] > 0].sort_values("avg_dur")
-    if not df_dur.empty:
-        fig_dur = px.bar(df_dur, x="avg_dur", y="nombre", orientation="h",
-            color="avg_dur", color_continuous_scale=["#0033AA","#0077FF","#00C8FF","#00E896"])
-        fig_dur.update_layout(height=280, xaxis=dict(title="Segundos",gridcolor="rgba(0,150,255,0.07)"), yaxis_title="", coloraxis_showscale=False, **PLOT_STYLE)
-        fig_dur.update_traces(marker_line_width=0)
-        st.plotly_chart(fig_dur, use_container_width=True)
+        # Razones de fin
+        if "end_reason" in llamadas.columns:
+            er = llamadas["end_reason"].value_counts().reset_index()
+            er.columns = ["reason", "n"]
+            er["label"] = er["reason"].map(END_REASONS).fillna(er["reason"])
+            er = er.sort_values("n")
+            fig_er = px.bar(er, x="n", y="label", orientation="h",
+                color="reason",
+                color_discrete_map=COLORS,
+            )
+            fig_er.update_layout(height=200, **PLOT,
+                showlegend=False,
+                xaxis=dict(gridcolor="rgba(255,255,255,0.03)", title=""),
+                yaxis=dict(gridcolor="rgba(255,255,255,0.03)", title=""),
+            )
+            fig_er.update_traces(marker_line_width=0)
+            st.plotly_chart(fig_er, use_container_width=True)
 
-# ── TAB 3 Registros ───────────────────────────────────────────────────────────
-with tab3:
-    fc1,fc2,fc3,fc4 = st.columns([2,1,1,1])
-    with fc1:
-        busqueda = st.text_input("🔍 Buscar numero o extension", placeholder="Ej: 8668109")
-    with fc2:
-        estados_disp = df["estado"].unique().tolist() if "estado" in df.columns else []
-        filtro_est   = st.multiselect("Estado", options=estados_disp, default=estados_disp)
-    with fc3:
-        filtro_ag = st.selectbox("Agente", ["Todos"] + list(AGENTES.values()))
-    with fc4:
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 2: AGENTES
+# ════════════════════════════════════════════════════════════════════════════════
+with tab2:
+    if "agente_atendio" not in llamadas.columns:
+        st.info("No hay datos de agentes en este período.")
+    else:
+        # Stats por agente (excluir "No atendida" y "Central Virtual" del conteo de atención)
+        ag_stats = []
+        for aid, nombre in AGENTES.items():
+            if nombre == "Central Virtual":
+                continue
+            atendidas_ag = llamadas[
+                (llamadas["agente_atendio"] == nombre) & (llamadas["atendida"] == True)
+            ]
+            n_atendidas = len(atendidas_ag)
+            dur_ag = atendidas_ag["duracion_real"].tolist()
+            avg_d  = int(sum(dur_ag)/len(dur_ag)) if dur_ag else 0
+            total_d = int(sum(dur_ag)/60)
+
+            # Llamadas que fueron routed a este agente pero no atendió
+            no_atendidas_ag = llamadas[
+                (llamadas.get("dnis_user", llamadas.get("agente_nombre", "")) == aid) &
+                (llamadas["atendida"] == False)
+            ] if "dnis_user" in llamadas.columns else pd.DataFrame()
+
+            # Salientes
+            sal = llamadas[
+                (llamadas["type"] == "outgoing") &
+                (llamadas["ani_user"] == aid)
+            ] if "ani_user" in llamadas.columns and "type" in llamadas.columns else pd.DataFrame()
+
+            espera_ag = atendidas_ag["total_ring"].tolist() if "total_ring" in atendidas_ag.columns else []
+            avg_esp = int(sum(espera_ag)/len(espera_ag)) if espera_ag else 0
+
+            ag_stats.append({
+                "id": aid, "nombre": nombre,
+                "atendidas": n_atendidas,
+                "avg_dur": avg_d,
+                "total_min": total_d,
+                "salientes": len(sal),
+                "avg_espera": avg_esp,
+            })
+
+        ag_stats.sort(key=lambda x: x["atendidas"], reverse=True)
+        df_ag = pd.DataFrame(ag_stats)
+
+        # Tarjetas
+        cols = st.columns(3)
+        for i, ag in enumerate(ag_stats):
+            with cols[i % 3]:
+                rank = ["🥇","🥈","🥉"][i] if i < 3 else f"#{i+1}"
+                st.markdown(f"""
+                <div style='background:#0C0F1A;border:1px solid rgba(255,255,255,0.06);
+                            border-radius:10px;padding:16px;margin-bottom:12px'>
+                    <div style='font-size:13px;color:#8899AA;margin-bottom:8px'>
+                        {rank} <span style='color:#CCD8E8;font-weight:500'>{ag['nombre']}</span>
+                    </div>
+                    <div style='font-size:24px;font-weight:300;color:#CCD8E8;letter-spacing:-1px;margin-bottom:10px'>
+                        {ag['atendidas']}
+                        <span style='font-size:12px;color:#445566;font-weight:400'> llamadas</span>
+                    </div>
+                    <div style='display:flex;gap:16px;font-size:11px;font-family:DM Mono,monospace;color:#334466'>
+                        <span>⏱ {fmt_dur(ag['avg_dur'])}</span>
+                        <span>⏳ {fmt_dur(ag['avg_espera'])} espera</span>
+                        <span>📞 {ag['salientes']} sal.</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
         st.markdown("<br>", unsafe_allow_html=True)
-        csv_data = df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("CSV", data=csv_data, file_name=f"cdrs_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", mime="text/csv", use_container_width=True)
 
-    df_v = df.copy()
+        # Gráfico comparativo
+        if not df_ag.empty and df_ag["atendidas"].sum() > 0:
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                fig_ag = px.bar(
+                    df_ag.sort_values("atendidas"), x="atendidas", y="nombre",
+                    orientation="h", title="Llamadas atendidas",
+                    color="atendidas",
+                    color_continuous_scale=["#1A3A2A", "#2A6A4A", "#3AAA6A"],
+                )
+                fig_ag.update_layout(height=260, coloraxis_showscale=False, **PLOT,
+                    xaxis=dict(gridcolor="rgba(255,255,255,0.04)", title=""),
+                    yaxis=dict(title=""),
+                    title_font=dict(color="#445566", size=12),
+                )
+                fig_ag.update_traces(marker_line_width=0)
+                st.plotly_chart(fig_ag, use_container_width=True)
+
+            with col_g2:
+                fig_dur = px.bar(
+                    df_ag[df_ag["avg_dur"] > 0].sort_values("avg_dur"),
+                    x="avg_dur", y="nombre", orientation="h",
+                    title="Duración promedio (segundos)",
+                    color="avg_dur",
+                    color_continuous_scale=["#1A2A4A", "#2A4A7A", "#3A7AAA"],
+                )
+                fig_dur.update_layout(height=260, coloraxis_showscale=False, **PLOT,
+                    xaxis=dict(gridcolor="rgba(255,255,255,0.04)", title=""),
+                    yaxis=dict(title=""),
+                    title_font=dict(color="#445566", size=12),
+                )
+                fig_dur.update_traces(marker_line_width=0)
+                st.plotly_chart(fig_dur, use_container_width=True)
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 3: ANÁLISIS
+# ════════════════════════════════════════════════════════════════════════════════
+with tab3:
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        # Mapa de calor hora × día
+        if "hora" in llamadas.columns and "dia_semana" in llamadas.columns:
+            dias_order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
+            heat = llamadas.groupby(["dia_semana","hora"]).size().reset_index(name="n")
+            hp = heat.pivot_table(index="dia_semana", columns="hora", values="n", fill_value=0)
+            hp = hp.reindex([d for d in dias_order if d in hp.index])
+            dias_es = {"Monday":"Lun","Tuesday":"Mar","Wednesday":"Mié",
+                       "Thursday":"Jue","Friday":"Vie","Saturday":"Sáb","Sunday":"Dom"}
+            hp.index = [dias_es.get(d, d) for d in hp.index]
+            fig_heat = px.imshow(hp,
+                color_continuous_scale=["#07090F","#0A1A2A","#1A3A5A","#2A6A8A","#3AAAAA"],
+                aspect="auto", title="Mapa de calor — Hora × Día",
+                labels=dict(x="Hora", y="Día"),
+            )
+            fig_heat.update_layout(height=240, **PLOT,
+                title_font=dict(color="#445566", size=12),
+                coloraxis_showscale=False,
+            )
+            st.plotly_chart(fig_heat, use_container_width=True)
+
+    with col_b:
+        # Evolución diaria
+        if "fecha" in llamadas.columns:
+            daily = llamadas.groupby(["fecha","atendida"]).size().reset_index(name="n")
+            daily["estado"] = daily["atendida"].map({True:"Atendida",False:"No atendida"})
+            fig_line = px.line(daily, x="fecha", y="n", color="estado",
+                title="Evolución diaria",
+                color_discrete_map={"Atendida":"#2A6A4A","No atendida":"#6A2A2A"},
+                markers=True,
+            )
+            fig_line.update_layout(height=240, **PLOT,
+                xaxis=dict(gridcolor="rgba(255,255,255,0.03)", title=""),
+                yaxis=dict(gridcolor="rgba(255,255,255,0.03)", title=""),
+                legend=dict(font_size=11, orientation="h", y=-0.2),
+                title_font=dict(color="#445566", size=12),
+            )
+            fig_line.update_traces(line_width=1.5, marker_size=4)
+            st.plotly_chart(fig_line, use_container_width=True)
+
+    # Distribución de duraciones
+    if "duracion_real" in llamadas.columns:
+        dur_data = llamadas[llamadas["duracion_real"] > 0]["duracion_real"]
+        if not dur_data.empty:
+            fig_hist = px.histogram(dur_data, nbins=30,
+                title="Distribución de duración de llamadas (segundos)",
+                color_discrete_sequence=["#2A5A7A"],
+            )
+            fig_hist.update_layout(height=200, **PLOT,
+                xaxis=dict(gridcolor="rgba(255,255,255,0.03)", title="Segundos"),
+                yaxis=dict(gridcolor="rgba(255,255,255,0.03)", title="Frecuencia"),
+                showlegend=False,
+                title_font=dict(color="#445566", size=12),
+            )
+            fig_hist.update_traces(marker_line_width=0)
+            st.plotly_chart(fig_hist, use_container_width=True)
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 4: REGISTROS
+# ════════════════════════════════════════════════════════════════════════════════
+with tab4:
+    r1, r2, r3, r4 = st.columns([2, 1, 1, 1])
+    with r1:
+        busqueda = st.text_input("Buscar número ANI/DNIS", placeholder="51900807026…")
+    with r2:
+        tipos_disp = sorted(llamadas["type"].dropna().unique().tolist()) if "type" in llamadas.columns else []
+        filtro_tipo = st.multiselect("Tipo", tipos_disp, default=tipos_disp)
+    with r3:
+        agentes_disp = ["Todos"] + [n for n in AGENTES.values() if n != "Central Virtual"]
+        filtro_ag = st.selectbox("Agente", agentes_disp)
+    with r4:
+        st.markdown("<br>", unsafe_allow_html=True)
+        csv = llamadas.to_csv(index=False).encode("utf-8-sig")
+        st.download_button("⬇ CSV", data=csv,
+            file_name=f"cdrs_unicos_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv", use_container_width=True)
+
+    # Filtros
+    df_v = llamadas.copy()
     if busqueda:
         mask = pd.Series([False]*len(df_v))
-        for c in ["origen","destino","canal"]:
+        for c in ["ani","dnis"]:
             if c in df_v.columns:
                 mask |= df_v[c].astype(str).str.contains(busqueda, case=False, na=False)
         df_v = df_v[mask]
-    if filtro_est and "estado" in df_v.columns:
-        df_v = df_v[df_v["estado"].isin(filtro_est)]
-    if filtro_ag != "Todos" and "agente_nombre" in df_v.columns:
-        df_v = df_v[df_v["agente_nombre"] == filtro_ag]
+    if filtro_tipo and "type" in df_v.columns:
+        df_v = df_v[df_v["type"].isin(filtro_tipo)]
+    if filtro_ag != "Todos" and "agente_atendio" in df_v.columns:
+        df_v = df_v[df_v["agente_atendio"] == filtro_ag]
 
-    st.caption(f"Mostrando {len(df_v):,} de {total:,} registros")
-    cols_show = [c for c in ["fecha","agente_nombre","origen","destino","duracion","estado","canal"] if c in df_v.columns]
+    st.caption(f"Mostrando {len(df_v):,} de {total:,} llamadas únicas")
+
+    # Columnas a mostrar
+    cols_show = [c for c in ["detect_time","ani","dnis","type","agente_atendio",
+                               "duracion_real","total_ring","n_intentos","end_reason_es",
+                               "route_name"] if c in df_v.columns]
     df_show = df_v[cols_show].copy()
-    if "duracion" in df_show.columns:
-        df_show["duracion"] = df_show["duracion"].apply(fmt_dur)
-    rename_map = {"fecha":"Fecha","agente_nombre":"Agente","origen":"Origen","destino":"Destino","duracion":"Duracion","estado":"Estado","canal":"Canal"}
-    df_show = df_show.rename(columns={k:v for k,v in rename_map.items() if k in df_show.columns})
-    st.dataframe(df_show, use_container_width=True, height=480, hide_index=True)
+    if "duracion_real" in df_show.columns:
+        df_show["duracion_real"] = df_show["duracion_real"].apply(fmt_dur)
+    if "total_ring" in df_show.columns:
+        df_show["total_ring"] = df_show["total_ring"].apply(fmt_dur)
 
-# ── TAB 4 Tendencias ──────────────────────────────────────────────────────────
-with tab4:
-    if "fecha" in df.columns:
-        df["_dt"]      = pd.to_datetime(df["fecha"], errors="coerce")
-        df["_fecha_d"] = df["_dt"].dt.date
+    rename = {
+        "detect_time":"Fecha/Hora", "ani":"Origen", "dnis":"Destino",
+        "type":"Tipo", "agente_atendio":"Agente", "duracion_real":"Duración",
+        "total_ring":"Espera", "n_intentos":"Intentos",
+        "end_reason_es":"Resultado", "route_name":"Ruta",
+    }
+    df_show = df_show.rename(columns={k:v for k,v in rename.items() if k in df_show.columns})
+    st.dataframe(df_show, use_container_width=True, height=460, hide_index=True)
 
-        st.markdown('<div class="section-title">Evolucion diaria de llamadas</div>', unsafe_allow_html=True)
-        daily = df.groupby(["_fecha_d","estado"]).size().reset_index(name="n")
-        if not daily.empty:
-            fig_line = px.line(daily, x="_fecha_d", y="n", color="estado",
-                color_discrete_map=COLOR_MAP, markers=True)
-            fig_line.update_layout(height=300, xaxis_title="Fecha", yaxis_title="Llamadas",
-                legend=dict(orientation="h",y=-0.2,font_size=11),
-                xaxis=dict(gridcolor="rgba(255,255,255,0.03)"),
-                yaxis=dict(gridcolor="rgba(0,150,255,0.07)"), **PLOT_STYLE)
-            fig_line.update_traces(line_width=2, marker_size=5)
-            st.plotly_chart(fig_line, use_container_width=True)
 
-        st.markdown('<div class="section-title">Mapa de calor — Hora vs Dia de semana</div>', unsafe_allow_html=True)
-        df["_dow"]  = df["_dt"].dt.day_name()
-        df["_hour"] = df["_dt"].dt.hour
-        dias_order  = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-        heat        = df.groupby(["_dow","_hour"]).size().reset_index(name="n")
-        if not heat.empty:
-            hp = heat.pivot_table(index="_dow", columns="_hour", values="n", fill_value=0)
-            hp = hp.reindex([d for d in dias_order if d in hp.index])
-            fig_heat = px.imshow(hp, color_continuous_scale=["#080C14","#0033AA","#0077FF","#00C8FF","#00E896"],
-                aspect="auto", labels=dict(x="Hora",y="Dia",color="Llamadas"))
-            fig_heat.update_layout(height=260, **PLOT_STYLE)
-            st.plotly_chart(fig_heat, use_container_width=True)
-    else:
-        st.info("No hay datos de fecha para graficar tendencias.")
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 5: DIAGNÓSTICO (raw data para debugging)
+# ════════════════════════════════════════════════════════════════════════════════
+with tab5:
+    st.markdown("#### Todos los registros CDR (incluyendo intentos de ring)")
+    st.caption("Útil para ver el detalle de cada intento de enrutamiento")
+
+    if df_all is not None and not df_all.empty:
+        cols_raw = [c for c in ["detect_time","callid","original_callid","ref_callid",
+                                  "ani","dnis","ani_user","dnis_user",
+                                  "name_endpoint_ani","name_endpoint_dnis",
+                                  "type","duration","ring_time","end_reason",
+                                  "route_name","connect_time"] if c in df_all.columns]
+        df_raw_show = df_all[cols_raw].copy()
+
+        busq2 = st.text_input("Buscar en registros raw")
+        if busq2:
+            mask2 = pd.Series([False]*len(df_raw_show))
+            for c in ["ani","dnis","callid","original_callid"]:
+                if c in df_raw_show.columns:
+                    mask2 |= df_raw_show[c].astype(str).str.contains(busq2, case=False, na=False)
+            df_raw_show = df_raw_show[mask2]
+
+        st.caption(f"{len(df_raw_show):,} registros (total sin deduplicar)")
+        csv_raw = df_raw_show.to_csv(index=False).encode("utf-8-sig")
+        st.download_button("⬇ CSV raw completo", data=csv_raw,
+            file_name=f"cdrs_raw_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv")
+        st.dataframe(df_raw_show, use_container_width=True, height=420, hide_index=True)
+
+        st.markdown("---")
+        st.markdown("**Estadísticas del raw**")
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("Registros totales", f"{len(df_all):,}")
+        s2.metric("Con duration > 0", f"{int((df_all['duration'] > 0).sum()):,}" if "duration" in df_all.columns else "—")
+        s3.metric("end_reason OK", f"{int((df_all['end_reason'] == 'OK').sum()):,}" if "end_reason" in df_all.columns else "—")
+        unique_orig = df_all["original_callid"].nunique() if "original_callid" in df_all.columns else 0
+        s4.metric("original_callid únicos", f"{unique_orig:,}")
 
 # ─── Auto-refresh live ────────────────────────────────────────────────────────
 if live_mode:
