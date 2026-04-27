@@ -90,7 +90,11 @@ p,li{color:#7A8AA0!important}
 """, unsafe_allow_html=True)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
-def fmt_dur(s):
+from zoneinfo import ZoneInfo
+TZ = ZoneInfo("America/Lima")
+
+def now_lima():
+    return datetime.now(TZ).replace(tzinfo=None)
     s = int(s or 0)
     if s <= 0: return "—"
     if s < 60: return f"{s}s"
@@ -426,7 +430,7 @@ with st.sidebar:
                 f"<div style='color:#4A7ABA;font-size:13px;font-family:JetBrains Mono,monospace;margin-top:2px'>{_U}</div>"
                 f"</div>", unsafe_allow_html=True)
     st.markdown("---")
-    hoy  = datetime.now()
+    hoy  = now_lima()
     ayer = hoy - timedelta(days=1)
     fi = st.date_input("Desde",       value=ayer.date())
     hi = st.time_input("Hora inicio", value=datetime.strptime("00:00","%H:%M").time())
@@ -471,14 +475,14 @@ elif btn_ok:
     else:   cargar(df_raw_h, f"{fi.strftime('%d/%m')} – {ff.strftime('%d/%m/%Y')}")
 elif btn_hoy:
     with st.spinner("Consultando..."):
-        hoy_inicio = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        hoy_fin    = datetime.now()
+        hoy_lima   = now_lima()
+        hoy_inicio = hoy_lima.replace(hour=0, minute=0, second=0, microsecond=0)
         df_raw_r, err = fetch_cdrs(
             date_start=hoy_inicio.strftime("%Y-%m-%d %H:%M:%S"),
-            date_end=hoy_fin.strftime("%Y-%m-%d %H:%M:%S")
+            date_end=hoy_lima.strftime("%Y-%m-%d %H:%M:%S")
         )
     if err: st.session_state.error = err
-    else:   cargar(df_raw_r, f"Hoy · desde las 00:00")
+    else:   cargar(df_raw_r, f"Hoy {hoy_lima.strftime('%d/%m/%Y')} · desde las 00:00")
 
 if st.session_state.error: st.error(f"⚠ {st.session_state.error}"); st.stop()
 if not st.session_state.loaded: st.info("Configura el período y pulsa **Consultar**."); st.stop()
