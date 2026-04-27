@@ -623,19 +623,20 @@ if live_mode:
     _gdim  = c["green_dim"];_ydim = c["yellow_dim"]
     _card2 = c["card2"];   _muted = c["muted"]
 
-    st.markdown(f"""<div style='display:flex;align-items:center;justify-content:space-between;padding:14px 18px;
-        background:{_bg};border:1px solid rgba(239,68,68,.3);border-radius:12px;margin-bottom:20px'>
-      <div style='display:flex;align-items:center;gap:14px'>
-        <div style='width:10px;height:10px;border-radius:50%;background:#EF4444;animation:blink 1s infinite'></div>
-        <span style='color:{_text};font-size:17px;font-weight:300'>Monitoreo en Vivo</span>
-        <span style='color:{_m2};font-size:12px;font-family:JetBrains Mono,monospace'>{lbl}</span>
-        {"<span style='color:#EAB308;font-size:11px;background:rgba(234,179,8,.1);padding:2px 8px;border-radius:4px'>&#x1F9EA; DEMO</span>" if st.session_state.cfg_modo_demo else ""}
-      </div>
-      <div style='display:flex;gap:20px;font-family:JetBrains Mono,monospace;font-size:12px'>
-        <span style='color:{_green}'>{n_conectadas} en llamada</span>
-        <span style='color:{_yel}'>{n_timbrando} timbrando</span>
-        <span style='color:{_m2}'>cada {intervalo}s</span>
-      </div></div>""", unsafe_allow_html=True)
+    demo_span = "<span style='color:#EAB308;font-size:11px;background:rgba(234,179,8,.1);padding:2px 8px;border-radius:4px'>&#x1F9EA; DEMO</span>" if st.session_state.cfg_modo_demo else ""
+    st.markdown(
+        f"<div style='display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:{_bg};border:1px solid rgba(239,68,68,.3);border-radius:12px;margin-bottom:20px'>"
+        f"<div style='display:flex;align-items:center;gap:14px'>"
+        f"<div style='width:10px;height:10px;border-radius:50%;background:#EF4444;animation:blink 1s infinite'></div>"
+        f"<span style='color:{_text};font-size:17px;font-weight:300'>Monitoreo en Vivo</span>"
+        f"<span style='color:{_m2};font-size:12px;font-family:JetBrains Mono,monospace'>{lbl}</span>"
+        f"{demo_span}</div>"
+        f"<div style='display:flex;gap:20px;font-family:JetBrains Mono,monospace;font-size:12px'>"
+        f"<span style='color:{_green}'>{n_conectadas} en llamada</span>"
+        f"<span style='color:{_yel}'>{n_timbrando} timbrando</span>"
+        f"<span style='color:{_m2}'>cada {intervalo}s</span>"
+        f"</div></div>",
+        unsafe_allow_html=True)
 
     kc1,kc2,kc3,kc4=st.columns(4)
     kc1.metric("Llamadas activas",n_activas); kc2.metric("En conversación",n_conectadas)
@@ -696,8 +697,9 @@ if live_mode:
                 <div style='color:{c['muted2']};font-size:10px;font-family:JetBrains Mono,monospace;margin-top:2px'>ID {ag_id}</div></div>
                 <div>{estado_h}</div></div>{det_h}</div>""",unsafe_allow_html=True)
 
+    sin_asignar = [cc for cc in llamadas_activas if not cc["agente_conocido"]]
+    sin_asignar = [cc for cc in llamadas_activas if not cc["agente_conocido"]]
     if sin_asignar:
-        st.markdown("---"); st.markdown("#### 📞 En cola / por asignar")
         for cc in sin_asignar:
             m,s=divmod(cc["duracion"],60); df_=f"{m}:{str(s).zfill(2)}" if cc["duracion"]>0 else "—"
             st.markdown(f"<div style='background:{_bg};border:1px solid rgba(234,179,8,.3);border-left:3px solid {_yel};border-radius:10px;padding:14px 18px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center'><div style='font-family:JetBrains Mono,monospace'><div style='color:{_text};font-size:14px'>&#x1F4DE; {cc['numero_cliente']}</div><div style='color:{_m2};font-size:11px;margin-top:4px'>DID: {cc['dnis_marcado']}</div></div><div style='text-align:right;font-family:JetBrains Mono,monospace'><div style='color:{_yel};font-size:18px;font-weight:300'>{df_}</div><div style='color:{_ydim};font-size:10px'>identificando…</div></div></div>",unsafe_allow_html=True)
