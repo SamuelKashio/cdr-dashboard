@@ -41,6 +41,46 @@ DEFAULT_TURNOS = [
 ]
 DEFAULT_NUMS_EXCLUIDOS = ["51902871550"]
 
+# ── Persistencia de configuración ─────────────────────────────────────────────
+CONFIG_FILE = "config.json"
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            return (
+                saved.get("agentes",        json.loads(json.dumps(DEFAULT_AGENTES))),
+                saved.get("turnos",         json.loads(json.dumps(DEFAULT_TURNOS))),
+                saved.get("nums_excluidos", list(DEFAULT_NUMS_EXCLUIDOS)),
+                saved.get("ventana_cb",     5),
+                saved.get("modo_demo",      False),
+            )
+        except Exception:
+            pass
+    return (
+        json.loads(json.dumps(DEFAULT_AGENTES)),
+        json.loads(json.dumps(DEFAULT_TURNOS)),
+        list(DEFAULT_NUMS_EXCLUIDOS),
+        5, False,
+    )
+
+def save_config():
+    try:
+        data = {
+            "agentes":        st.session_state.cfg_agentes,
+            "turnos":         st.session_state.cfg_turnos,
+            "nums_excluidos": st.session_state.cfg_nums_excluidos,
+            "ventana_cb":     st.session_state.cfg_ventana_cb,
+            "modo_demo":      st.session_state.cfg_modo_demo,
+        }
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        st.error(f"No se pudo guardar la configuración: {e}")
+        return False
+
 # ── Inicializar configuración en sesión (carga desde disco si existe) ──────────
 if "cfg_loaded" not in st.session_state:
     _ag, _tu, _ne, _vc, _md = load_config()
