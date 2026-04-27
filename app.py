@@ -4,9 +4,10 @@ import requests
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import time
+import json
 
 # ── Zona horaria Lima ──────────────────────────────────────────────────────────
 TZ = ZoneInfo("America/Lima")
@@ -20,28 +21,57 @@ except Exception:
     st.error("⚠ Configura CMW_USER y CMW_PASS en .streamlit/secrets.toml")
     st.stop()
 
-# ── Constantes ─────────────────────────────────────────────────────────────────
-CENTRAL_ID = "8668106"
-AGENTES = {
-    "8668106": "Central Virtual",
-    "8668109": "Alonso Loyola",
-    "8668110": "Jose Luis Cahuana",
-    "8668112": "Daniel Huayta",
-    "8668111": "Deivy Chavez",
-    "8668114": "Joe Villanueva",
-    "8672537": "Victor Figueroa",
+# ── Configuración por defecto ──────────────────────────────────────────────────
+DEFAULT_AGENTES = {
+    "8668106": {"nombre": "Central Virtual", "activo": True,  "es_central": True},
+    "8668109": {"nombre": "Alonso Loyola",   "activo": True,  "es_central": False},
+    "8668110": {"nombre": "Jose Luis Cahuana","activo": True, "es_central": False},
+    "8668112": {"nombre": "Daniel Huayta",   "activo": True,  "es_central": False},
+    "8668111": {"nombre": "Deivy Chavez",    "activo": True,  "es_central": False},
+    "8668114": {"nombre": "Joe Villanueva",  "activo": True,  "es_central": False},
+    "8672537": {"nombre": "Victor Figueroa", "activo": True,  "es_central": False},
 }
-AGENTES_SIN_CENTRAL = {k: v for k, v in AGENTES.items() if k != CENTRAL_ID}
-AGENTES_SIN_ID = {"Luz Goicochea"}
-
-TURNOS = [
-    {"dias":[0,1,2,3,4],"h_ini": 6,"h_fin":14,"agente":"Alonso Loyola"},
-    {"dias":[0,1,2,3,4],"h_ini":14,"h_fin":22,"agente":"Jose Luis Cahuana"},
-    {"dias":[0,1,2,3,4],"h_ini":22,"h_fin":30,"agente":"Deivy Chavez"},
-    {"dias":[5,6],      "h_ini": 6,"h_fin":14,"agente":"Daniel Huayta"},
-    {"dias":[5,6],      "h_ini":14,"h_fin":22,"agente":"Luz Goicochea"},
-    {"dias":[5,6],      "h_ini":22,"h_fin":30,"agente":"Joe Villanueva"},
+DEFAULT_TURNOS = [
+    {"dias":[0,1,2,3,4],"h_ini": 6,"h_fin":14,"agente":"Alonso Loyola",    "activo":True},
+    {"dias":[0,1,2,3,4],"h_ini":14,"h_fin":22,"agente":"Jose Luis Cahuana","activo":True},
+    {"dias":[0,1,2,3,4],"h_ini":22,"h_fin":30,"agente":"Deivy Chavez",     "activo":True},
+    {"dias":[5,6],      "h_ini": 6,"h_fin":14,"agente":"Daniel Huayta",    "activo":True},
+    {"dias":[5,6],      "h_ini":14,"h_fin":22,"agente":"Luz Goicochea",    "activo":True},
+    {"dias":[5,6],      "h_ini":22,"h_fin":30,"agente":"Joe Villanueva",   "activo":True},
 ]
+DEFAULT_NUMS_EXCLUIDOS = ["51902871550"]
+
+# ── Inicializar configuración en sesión ────────────────────────────────────────
+if "cfg_agentes"       not in st.session_state: st.session_state.cfg_agentes       = json.loads(json.dumps(DEFAULT_AGENTES))
+if "cfg_turnos"        not in st.session_state: st.session_state.cfg_turnos         = json.loads(json.dumps(DEFAULT_TURNOS))
+if "cfg_nums_excluidos"not in st.session_state: st.session_state.cfg_nums_excluidos = list(DEFAULT_NUMS_EXCLUIDOS)
+if "cfg_ventana_cb"    not in st.session_state: st.session_state.cfg_ventana_cb     = 5  # minutos
+if "cfg_modo_demo"     not in st.session_state: st.session_state.cfg_modo_demo      = False
+if "show_config"       not in st.session_state: st.session_state.show_config        = False
+
+# ── Accesores de configuración activa ─────────────────────────────────────────
+def get_agentes():
+    return {k: v["nombre"] for k, v in st.session_state.cfg_agentes.items()}
+
+def get_central_id():
+    for k, v in st.session_state.cfg_agentes.items():
+        if v.get("es_central"): return k
+    return "8668106"
+
+def get_agentes_sin_central():
+    return {k: v["nombre"] for k, v in st.session_state.cfg_agentes.items()
+            if not v.get("es_central") and v.get("activo", True)}
+
+def get_turnos():
+    return [t for t in st.session_state.cfg_turnos if t.get("activo", True)]
+
+def get_nums_excluidos():
+    nums = list(st.session_state.cfg_nums_excluidos)
+    if st.session_state.cfg_modo_demo:
+        return []   # En modo demo NO excluir nada
+    return nums
+
+AGENTES_SIN_ID = {"Luz Goicochea"}
 
 ESCENARIOS = {
     "atendida":              {"es":"✅ Atendida",            "color":"#22C55E"},
@@ -61,8 +91,8 @@ END_REASONS = {
 }
 
 # ── Page config ────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Supervisor · Soporte",page_icon="🎯",
-                   layout="wide",initial_sidebar_state="expanded")
+st.set_page_config(page_title="Supervisor · Soporte", page_icon="🎯",
+                   layout="wide", initial_sidebar_state="expanded")
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -101,14 +131,13 @@ def fmt_dur(s):
     except: return "—"
 
 def safe_mean(df, col):
-    """Retorna la media entera de df[col] para filas atendidas, o 0 si no hay datos."""
     try:
         if df is None or df.empty: return 0
         if col not in df.columns or "atendida" not in df.columns: return 0
-        s = df[df["atendida"] == True][col].dropna()
+        s = df[df["atendida"]==True][col].dropna()
         if len(s) == 0: return 0
         m = float(s.mean())
-        return 0 if m != m else int(m)  # NaN check
+        return 0 if m != m else int(m)
     except: return 0
 
 def norm_num(n):
@@ -119,10 +148,10 @@ def agente_de_turno(dt):
     if pd.isna(dt): return "Sin turno"
     dow, h = dt.weekday(), dt.hour
     h_ext = h if h >= 6 else h + 24
-    for t in TURNOS:
+    for t in get_turnos():
         if dow in t["dias"] and t["h_ini"] <= h_ext < t["h_fin"]: return t["agente"]
     dow_prev = (dow - 1) % 7
-    for t in TURNOS:
+    for t in get_turnos():
         if dow_prev in t["dias"] and t["h_ini"] <= h_ext < t["h_fin"]: return t["agente"]
     return "Sin turno"
 
@@ -147,7 +176,7 @@ def _fetch_chunk(ds, de):
         ini += PAGE_SIZE
     return all_cdrs
 
-def fetch_cdrs(date_start=None,date_end=None,live=False,progress_cb=None):
+def fetch_cdrs(date_start=None, date_end=None, live=False, progress_cb=None):
     if live:
         try:
             r = requests.get("https://callmyway.com/getCdrs.php",
@@ -157,17 +186,14 @@ def fetch_cdrs(date_start=None,date_end=None,live=False,progress_cb=None):
             cdrs = data.get("cdrs",data) if isinstance(data,dict) else data
             return pd.DataFrame(cdrs or []), None
         except Exception as e: return None, str(e)
-
     try:
         dt_ini = datetime.strptime(date_start,"%Y-%m-%d %H:%M:%S")
         dt_fin = datetime.strptime(date_end,  "%Y-%m-%d %H:%M:%S")
     except Exception as e: return None, f"Fechas inválidas: {e}"
-
     chunks, cursor = [], dt_ini
     while cursor < dt_fin:
         chunk_end = min(cursor+timedelta(days=CHUNK_DAYS),dt_fin)
         chunks.append((cursor,chunk_end)); cursor = chunk_end
-
     all_cdrs = []
     for i,(c_ini,c_fin) in enumerate(chunks):
         if progress_cb: progress_cb(i/len(chunks),
@@ -180,12 +206,20 @@ def fetch_cdrs(date_start=None,date_end=None,live=False,progress_cb=None):
 # ── Clasificación entrantes ────────────────────────────────────────────────────
 def clasificar_entrantes(df_inc):
     if df_inc is None or df_inc.empty: return pd.DataFrame()
-    agentes_reales = set(AGENTES_SIN_CENTRAL.keys())
+    CENTRAL_ID = get_central_id()
+    agentes_reales = set(get_agentes_sin_central().keys())
+    nums_excluidos = {norm_num(n) for n in get_nums_excluidos()}
+
     df_inc = df_inc.copy()
     for col in ["dnis_user","ani_user","original_callid","ref_callid","ani","dnis"]:
         if col in df_inc.columns:
             df_inc[col] = df_inc[col].astype(str).str.strip().replace(
                 {"None":"","nan":"","null":"","<NA>":""})
+
+    # Excluir números de prueba
+    if nums_excluidos and "ani" in df_inc.columns:
+        df_inc = df_inc[~df_inc["ani"].apply(norm_num).isin(nums_excluidos)]
+    if df_inc.empty: return pd.DataFrame()
 
     df_trn = df_inc[df_inc["dnis_user"] == CENTRAL_ID]
     df_ag  = df_inc[df_inc["dnis_user"].isin(agentes_reales)]
@@ -204,9 +238,9 @@ def clasificar_entrantes(df_inc):
         resultados.append({
             "original_callid":orig_cid,"detect_time":detect_time,
             "numero_cliente":ani_cliente,"atendida":atendida,
-            "agente":AGENTES.get(str(agente_id),"Sin atender") if agente_id else "Sin atender",
+            "agente":get_agentes().get(str(agente_id),"Sin atender") if agente_id else "Sin atender",
             "agente_id":agente_id,
-            "agente_timbrando":AGENTES.get(str(agente_timbrando),"—") if agente_timbrando else "—",
+            "agente_timbrando":get_agentes().get(str(agente_timbrando),"—") if agente_timbrando else "—",
             "espera_usuario":max(0,int(espera_usuario or 0)),
             "duracion":duracion,"espera_total":ring_total,
             "n_intentos":n_intentos,"end_reason":end_reason,
@@ -229,30 +263,27 @@ def clasificar_entrantes(df_inc):
         ring_total = int(ag_grp["ring_time"].apply(lambda x: max(0,int(x or 0))).sum())
         n_intentos = len(ag_grp)
         contestado = ag_grp[ag_grp["duration"] > 0]
+
         if not contestado.empty:
             best = contestado.loc[contestado["duration"].idxmax()]
             _append(orig_cid,detect_time,ani_cliente,True,str(best["dnis_user"]),
                     int(best["duration"]),ring_total,n_intentos,
                     str(best.get("end_reason","OK") or "OK"),"atendida",
-                    agente_timbrando=None, espera_usuario=0)
+                    agente_timbrando=None,espera_usuario=0)
         else:
             ers = ag_grp["end_reason"].replace("",pd.NA).dropna()
             top_er = ers.mode().iloc[0] if not ers.empty else "UNKNOWN"
-            if top_er == "CANCELLED": esc = "colgó_timbrando"
-            elif top_er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE"): esc = "agente_no_disponible"
-            elif top_er == "NO_ANSWER": esc = "múltiples_no_respuesta" if n_intentos>1 else "no_respondió"
-            elif top_er == "DECLINE": esc = "rechazada"
-            else: esc = "perdida"
-            # Para colgó_timbrando: capturar qué agente estaba timbrando
+            if top_er=="CANCELLED": esc="colgó_timbrando"
+            elif top_er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE"): esc="agente_no_disponible"
+            elif top_er=="NO_ANSWER": esc="múltiples_no_respuesta" if n_intentos>1 else "no_respondió"
+            elif top_er=="DECLINE": esc="rechazada"
+            else: esc="perdida"
             ag_timbrando = None
-            if esc == "colgó_timbrando":
-                # El agente que estaba timbrando cuando el usuario colgó
-                ringing = ag_grp.sort_values("detect_time", ascending=False)
+            if esc=="colgó_timbrando":
+                ringing = ag_grp.sort_values("detect_time",ascending=False)
                 ag_timbrando = str(ringing.iloc[0]["dnis_user"]) if not ringing.empty else None
-            # Tiempo que esperó el usuario = ring_time acumulado
-            espera_u = ring_total
             _append(orig_cid,detect_time,ani_cliente,False,None,0,ring_total,n_intentos,top_er,esc,
-                    agente_timbrando=ag_timbrando, espera_usuario=espera_u)
+                    agente_timbrando=ag_timbrando,espera_usuario=ring_total)
 
     for _,trn_row in (df_trn.iterrows() if not df_trn.empty else []):
         ref_cid = str(trn_row.get("ref_callid","")).strip()
@@ -265,7 +296,7 @@ def clasificar_entrantes(df_inc):
               "agente_no_disponible" if er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE") else \
               "no_enrutada"
         _append(orig_cid,detect_time,ani_cliente,False,None,0,0,0,er,esc,
-                agente_timbrando=None, espera_usuario=0)
+                agente_timbrando=None,espera_usuario=0)
 
     if not resultados: return pd.DataFrame()
     df = pd.DataFrame(resultados)
@@ -280,6 +311,8 @@ def clasificar_entrantes(df_inc):
 # ── Procesamiento ──────────────────────────────────────────────────────────────
 def procesar(df_raw):
     if df_raw is None or df_raw.empty: return pd.DataFrame(),pd.DataFrame(),pd.DataFrame()
+    CENTRAL_ID = get_central_id()
+    todos_agentes = set(get_agentes().keys())
     df = df_raw.copy()
     for col in ["duration","ring_time"]:
         df[col] = pd.to_numeric(df.get(col,0),errors="coerce").fillna(0).astype(int)
@@ -289,29 +322,27 @@ def procesar(df_raw):
     for col in ["ani_user","dnis_user","ref_callid","original_callid"]:
         if col in df.columns: df[col] = df[col].astype(str).str.strip()
 
-    # ── Inferir tipo cuando type es null ──────────────────────────────────────
-    # Entrante: dnis_user es CENTRAL_ID o un agente real
-    # Saliente: ani_user es un agente real y dnis_user NO es agente ni central
-    todos_agentes = set(AGENTES.keys())
-    if "type" not in df.columns:
-        df["type"] = None
+    # Inferir type cuando es null
+    if "type" not in df.columns: df["type"] = ""
     df["type"] = df["type"].astype(str).replace({"None":"","nan":"","null":"","<NA>":""})
-    mask_tipo_nulo = df["type"] == ""
-    if mask_tipo_nulo.any():
-        df.loc[mask_tipo_nulo & df["dnis_user"].isin(todos_agentes), "type"] = "incoming"
-        df.loc[mask_tipo_nulo & df["ani_user"].isin(AGENTES_SIN_CENTRAL.keys()) &
+    mask_null = df["type"] == ""
+    if mask_null.any():
+        df.loc[mask_null & df["dnis_user"].isin(todos_agentes), "type"] = "incoming"
+        df.loc[mask_null & df["ani_user"].isin(get_agentes_sin_central().keys()) &
                ~df["dnis_user"].isin(todos_agentes), "type"] = "outgoing"
-        # Los que siguen sin tipo y dnis_user es central → incoming
-        mask_tipo_nulo2 = df["type"] == ""
-        df.loc[mask_tipo_nulo2, "type"] = "incoming"
+        df.loc[df["type"]=="", "type"] = "incoming"
 
+    # Excluir números de prueba de salientes
+    nums_excluidos = {norm_num(n) for n in get_nums_excluidos()}
     mask_sal = (
         (df["type"]=="outgoing") &
-        (df["ani_user"].isin(AGENTES_SIN_CENTRAL.keys())) &
+        (df["ani_user"].isin(get_agentes_sin_central().keys())) &
         (~df["dnis"].astype(str).str.startswith("833"))
     )
     df_sal = df[mask_sal].copy()
-    df_sal["agente"]        = df_sal["ani_user"].map(AGENTES)
+    if nums_excluidos and "dnis" in df_sal.columns:
+        df_sal = df_sal[~df_sal["dnis"].apply(lambda x: norm_num(str(x))).isin(nums_excluidos)]
+    df_sal["agente"]        = df_sal["ani_user"].map(get_agentes())
     df_sal["numero_cliente"]= df_sal["dnis"].astype(str)
     df_sal["atendida"]      = df_sal["duration"] > 0
     df_sal["hora"]          = df_sal["detect_time"].dt.hour
@@ -323,28 +354,28 @@ def procesar(df_raw):
     return df_ent, df_sal, df
 
 # ── Cumplimiento callbacks ─────────────────────────────────────────────────────
-VENTANA_CB = pd.Timedelta(minutes=5)
-ESC_RESPONSABLE = {"no_respondió","múltiples_no_respuesta","agente_no_disponible","rechazada","colgó_timbrando","perdida"}
+ESC_RESPONSABLE = {"no_respondió","múltiples_no_respuesta","agente_no_disponible",
+                   "rechazada","colgó_timbrando","perdida"}
 
 def calcular_cumplimiento(df_ent, df_sal):
     if df_ent is None or df_ent.empty: return pd.DataFrame()
     if "escenario" not in df_ent.columns: return pd.DataFrame()
-    perdidas = df_ent[(df_ent["atendida"]==False) & (df_ent["escenario"].isin(ESC_RESPONSABLE))].copy().sort_values("detect_time")
+    ventana = pd.Timedelta(minutes=st.session_state.cfg_ventana_cb)
+    perdidas = df_ent[(df_ent["atendida"]==False) &
+                      (df_ent["escenario"].isin(ESC_RESPONSABLE))].copy().sort_values("detect_time")
     if perdidas.empty: return pd.DataFrame()
-
     df_sal2 = df_sal.copy() if not df_sal.empty else pd.DataFrame()
     df_ent2 = df_ent.copy()
     if not df_sal2.empty and "numero_cliente" in df_sal2.columns:
         df_sal2["_num"] = df_sal2["numero_cliente"].apply(norm_num)
     if "numero_cliente" in df_ent2.columns:
         df_ent2["_num"] = df_ent2["numero_cliente"].apply(norm_num)
-
     resultados = []
     for _,row in perdidas.iterrows():
         t0 = row["detect_time"]
         if pd.isna(t0): continue
         num = norm_num(row["numero_cliente"])
-        t_lim = t0 + VENTANA_CB
+        t_lim = t0 + ventana
         cb_sal = pd.DataFrame()
         if not df_sal2.empty and "detect_time" in df_sal2.columns:
             cb_sal = df_sal2[(df_sal2["_num"]==num)&(df_sal2["detect_time"]>t0)&
@@ -364,21 +395,162 @@ def calcular_cumplimiento(df_ent, df_sal):
         resultados.append({
             "Fecha/Hora":t0,"Número":row["numero_cliente"],
             "Responsable":row.get("responsable","—"),"Escenario":esc_es(row.get("escenario","")),
-            "Resolución":tipo,"Tiempo respuesta":fmt_dur(seg) if seg is not None else "> 5 min",
+            "Resolución":tipo,"Tiempo respuesta":fmt_dur(seg) if seg is not None else f"> {st.session_state.cfg_ventana_cb} min",
             "Agente resolvió":ag_cb,"Cumplimiento":tipo!="❌ Sin resolución","_seg":seg,
         })
     return pd.DataFrame(resultados)
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PANEL DE CONFIGURACIÓN (modal)
+# ══════════════════════════════════════════════════════════════════════════════
+def render_config():
+    st.markdown("## ⚙️ Configuración")
+    st.markdown("---")
+
+    cfg_tabs = st.tabs(["🔢 Agentes","📅 Turnos","🚫 Números excluidos","⚙️ General"])
+
+    # ── TAB Agentes ────────────────────────────────────────────────────────────
+    with cfg_tabs[0]:
+        st.markdown("#### Gestión de agentes")
+        st.caption("Agrega, edita o desactiva agentes. El cambio aplica inmediatamente al procesar datos.")
+
+        ag_dict = st.session_state.cfg_agentes
+        for kid, val in list(ag_dict.items()):
+            c1,c2,c3,c4 = st.columns([1.2,2,0.6,0.5])
+            with c1: st.text_input("ID", value=kid, disabled=True, key=f"ag_id_{kid}")
+            with c2:
+                nuevo_nombre = st.text_input("Nombre", value=val["nombre"], key=f"ag_nom_{kid}")
+                ag_dict[kid]["nombre"] = nuevo_nombre
+            with c3:
+                activo = st.checkbox("Activo", value=val.get("activo",True), key=f"ag_act_{kid}",
+                                     disabled=val.get("es_central",False))
+                ag_dict[kid]["activo"] = activo
+            with c4:
+                if not val.get("es_central",False):
+                    if st.button("🗑", key=f"ag_del_{kid}", help="Eliminar agente"):
+                        del st.session_state.cfg_agentes[kid]
+                        st.rerun()
+
+        st.markdown("---")
+        st.markdown("**Agregar nuevo agente**")
+        na1,na2,na3 = st.columns([1.5,2.5,1])
+        with na1: new_id   = st.text_input("ID (endpoint)",  key="new_ag_id",  placeholder="8668XXX")
+        with na2: new_nom  = st.text_input("Nombre",         key="new_ag_nom", placeholder="Nombre Apellido")
+        with na3:
+            st.markdown("<br>",unsafe_allow_html=True)
+            if st.button("➕ Agregar", key="btn_add_ag"):
+                if new_id and new_nom and new_id not in st.session_state.cfg_agentes:
+                    st.session_state.cfg_agentes[new_id] = {"nombre":new_nom,"activo":True,"es_central":False}
+                    st.success(f"Agente {new_nom} agregado")
+                    st.rerun()
+                elif new_id in st.session_state.cfg_agentes:
+                    st.error("Ese ID ya existe")
+
+    # ── TAB Turnos ─────────────────────────────────────────────────────────────
+    with cfg_tabs[1]:
+        st.markdown("#### Horario de turnos")
+        st.caption("Define qué agente cubre cada franja horaria. Usado para asignar responsabilidad en llamadas perdidas.")
+        DIAS_MAP = {0:"Lun",1:"Mar",2:"Mié",3:"Jue",4:"Vie",5:"Sáb",6:"Dom"}
+
+        for i, t in enumerate(st.session_state.cfg_turnos):
+            with st.expander(f"Turno {i+1}: {t['agente']} · {t['h_ini']}h–{t['h_fin'] if t['h_fin']<=24 else str(t['h_fin']-24)+'h (+1)'} · {', '.join(DIAS_MAP[d] for d in t['dias'])} {'✅' if t.get('activo',True) else '⏸'}"):
+                tc1,tc2,tc3,tc4 = st.columns([2,1,1,1])
+                with tc1:
+                    ag_nombres = [v["nombre"] for k,v in st.session_state.cfg_agentes.items() if not v.get("es_central")]
+                    idx = ag_nombres.index(t["agente"]) if t["agente"] in ag_nombres else 0
+                    t["agente"] = st.selectbox("Agente", ag_nombres, index=idx, key=f"t_ag_{i}")
+                with tc2: t["h_ini"] = st.number_input("Hora inicio", 0, 30, t["h_ini"], key=f"t_hi_{i}")
+                with tc3: t["h_fin"] = st.number_input("Hora fin (30=6am)", 0, 30, t["h_fin"], key=f"t_hf_{i}")
+                with tc4:
+                    t["activo"] = st.checkbox("Activo", value=t.get("activo",True), key=f"t_act_{i}")
+                dias_sel = st.multiselect("Días", options=list(DIAS_MAP.keys()),
+                    format_func=lambda x: DIAS_MAP[x], default=t["dias"], key=f"t_dias_{i}")
+                t["dias"] = dias_sel
+                if st.button(f"🗑 Eliminar turno {i+1}", key=f"t_del_{i}"):
+                    st.session_state.cfg_turnos.pop(i); st.rerun()
+
+        st.markdown("---")
+        if st.button("➕ Agregar nuevo turno"):
+            st.session_state.cfg_turnos.append({
+                "dias":[0,1,2,3,4],"h_ini":8,"h_fin":17,
+                "agente":list(get_agentes_sin_central().values())[0] if get_agentes_sin_central() else "",
+                "activo":True
+            })
+            st.rerun()
+
+    # ── TAB Números excluidos ──────────────────────────────────────────────────
+    with cfg_tabs[2]:
+        st.markdown("#### Números excluidos de métricas")
+        st.caption("Las llamadas desde estos números NO aparecen en reportes ni activan alertas. Útil para llamadas de prueba.")
+
+        demo_badge = "🟢 MODO DEMO ACTIVO — exclusiones desactivadas" if st.session_state.cfg_modo_demo else ""
+        if demo_badge:
+            st.warning(demo_badge)
+
+        st.markdown("**Switch modo demo**")
+        st.session_state.cfg_modo_demo = st.toggle(
+            "Modo demo (incluir todos los números, incluso los excluidos)",
+            value=st.session_state.cfg_modo_demo, key="toggle_demo"
+        )
+        st.markdown("---")
+        st.markdown("**Números en lista de exclusión:**")
+        for i, num in enumerate(list(st.session_state.cfg_nums_excluidos)):
+            nc1,nc2 = st.columns([4,1])
+            with nc1:
+                nuevo = st.text_input(f"Número {i+1}", value=num, key=f"exc_num_{i}")
+                st.session_state.cfg_nums_excluidos[i] = nuevo
+            with nc2:
+                st.markdown("<br>",unsafe_allow_html=True)
+                if st.button("🗑", key=f"exc_del_{i}"):
+                    st.session_state.cfg_nums_excluidos.pop(i); st.rerun()
+
+        st.markdown("<br>",unsafe_allow_html=True)
+        nc1,nc2 = st.columns([4,1])
+        with nc1: nuevo_exc = st.text_input("Agregar número", placeholder="519XXXXXXXX", key="new_exc")
+        with nc2:
+            st.markdown("<br>",unsafe_allow_html=True)
+            if st.button("➕ Agregar", key="btn_add_exc"):
+                if nuevo_exc and nuevo_exc not in st.session_state.cfg_nums_excluidos:
+                    st.session_state.cfg_nums_excluidos.append(nuevo_exc)
+                    st.rerun()
+
+    # ── TAB General ────────────────────────────────────────────────────────────
+    with cfg_tabs[3]:
+        st.markdown("#### Parámetros generales")
+        st.session_state.cfg_ventana_cb = st.slider(
+            "Ventana de cumplimiento (minutos para devolver llamada)",
+            1, 15, st.session_state.cfg_ventana_cb
+        )
+        st.markdown("---")
+        st.markdown("**Restablecer configuración**")
+        if st.button("⚠️ Restablecer todo a valores por defecto"):
+            st.session_state.cfg_agentes        = json.loads(json.dumps(DEFAULT_AGENTES))
+            st.session_state.cfg_turnos         = json.loads(json.dumps(DEFAULT_TURNOS))
+            st.session_state.cfg_nums_excluidos = list(DEFAULT_NUMS_EXCLUIDOS)
+            st.session_state.cfg_ventana_cb     = 5
+            st.session_state.cfg_modo_demo      = False
+            st.success("Configuración restablecida"); st.rerun()
+
+    st.markdown("---")
+    if st.button("✅ Cerrar configuración", type="primary", use_container_width=True):
+        st.session_state.show_config = False
+        st.rerun()
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 hoy_lima = now_lima()
-
 with st.sidebar:
     st.markdown("## 🎯 Supervisor · Soporte")
+    # Badge modo demo
+    if st.session_state.cfg_modo_demo:
+        st.markdown("<div style='background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.4);border-radius:6px;padding:6px 10px;text-align:center;font-size:11px;color:#EAB308;margin-bottom:8px'>🧪 MODO DEMO ACTIVO</div>",unsafe_allow_html=True)
     st.markdown(f"""<div style='background:#0C0F1C;border:1px solid rgba(80,120,200,.15);border-radius:8px;
-        padding:10px 12px;margin-bottom:16px'>
-        <div style='color:#1A3050;font-size:10px;font-family:JetBrains Mono,monospace;letter-spacing:.5px'>CUENTA</div>
+        padding:10px 12px;margin-bottom:8px'>
+        <div style='color:#1A3050;font-size:10px;font-family:JetBrains Mono,monospace'>CUENTA</div>
         <div style='color:#4A7ABA;font-size:13px;font-family:JetBrains Mono,monospace;margin-top:2px'>{_U}</div>
-        </div>""", unsafe_allow_html=True)
+        </div>""",unsafe_allow_html=True)
+    if st.button("⚙️ Configuración", use_container_width=True):
+        st.session_state.show_config = not st.session_state.show_config
+        st.rerun()
     st.markdown("---")
     fi = st.date_input("Desde",       value=(hoy_lima-timedelta(days=1)).date())
     hi = st.time_input("Hora inicio",  value=datetime.strptime("00:00","%H:%M").time())
@@ -391,6 +563,11 @@ with st.sidebar:
     st.markdown("---")
     live_mode = st.toggle("🔴 Modo en vivo",value=False)
     intervalo = st.slider("Refrescar cada (seg)",5,60,15) if live_mode else 15
+
+# ── Mostrar panel de configuración ────────────────────────────────────────────
+if st.session_state.show_config:
+    render_config()
+    st.stop()
 
 # ── Sesión ─────────────────────────────────────────────────────────────────────
 for k in ["df_ent","df_sal","df_raw","df_live_raw","label","error","loaded"]:
@@ -410,7 +587,6 @@ if live_mode:
     df_raw_live,err = fetch_cdrs(live=True)
     if err: st.error(f"⚠ {err}"); st.stop()
     cargar_live(df_raw_live,f"EN VIVO · {hoy_lima.strftime('%H:%M:%S')}")
-
 elif btn_hoy:
     ds = hoy_lima.replace(hour=0,minute=0,second=0,microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
     de = hoy_lima.strftime("%Y-%m-%d %H:%M:%S")
@@ -418,7 +594,6 @@ elif btn_hoy:
         df_raw_h,err = fetch_cdrs(date_start=ds,date_end=de)
     if err: st.session_state.error = err
     else:   cargar(df_raw_h,f"Hoy {hoy_lima.strftime('%d/%m/%Y')} · desde las 00:00")
-
 elif btn_ok:
     ds = datetime.combine(fi,hi).strftime("%Y-%m-%d %H:%M:%S")
     de = datetime.combine(ff,hf).strftime("%Y-%m-%d %H:%M:%S")
@@ -438,147 +613,89 @@ if not st.session_state.loaded: st.info("Configura el período y pulsa **Consult
 if live_mode:
     df_live = st.session_state.get("df_live_raw",pd.DataFrame())
     lbl     = st.session_state.label
+    CENTRAL_ID = get_central_id()
 
-    # ── Inicializar estado de notificaciones ──────────────────────────────────
-    if "notif_ids_vistos" not in st.session_state:
-        st.session_state.notif_ids_vistos = set()
-    if "notif_sin_devolver" not in st.session_state:
-        st.session_state.notif_sin_devolver = {}  # callid → detect_time
+    if "notif_ids_vistos"    not in st.session_state: st.session_state.notif_ids_vistos    = set()
+    if "notif_sin_devolver"  not in st.session_state: st.session_state.notif_sin_devolver  = {}
 
-    # ── Consultar CDRs recientes para detectar perdidas nuevas ────────────────
     _ahora = now_lima()
-    _hace5 = (_ahora - timedelta(minutes=6)).strftime("%Y-%m-%d %H:%M:%S")
+    _hace6 = (_ahora-timedelta(minutes=6)).strftime("%Y-%m-%d %H:%M:%S")
     _hasta = _ahora.strftime("%Y-%m-%d %H:%M:%S")
     _debug_info = ""
     try:
-        _df_rec, _err_rec = fetch_cdrs(date_start=_hace5, date_end=_hasta)
+        _df_rec,_err_rec = fetch_cdrs(date_start=_hace6,date_end=_hasta)
         if _df_rec is not None and not _df_rec.empty:
-            _df_rec_proc, _df_sal_rec, _ = procesar(_df_rec)
-            _debug_info = f"CDRs últimos 6 min: {len(_df_rec)} registros · {len(_df_rec_proc)} entrantes clasificadas"
+            _df_rec_proc,_df_sal_rec,_ = procesar(_df_rec)
+            _debug_info = f"CDRs últimos 6 min: {len(_df_rec)} registros · {len(_df_rec_proc)} entrantes"
         else:
-            _df_rec_proc, _df_sal_rec = pd.DataFrame(), pd.DataFrame()
-            _debug_info = f"Sin CDRs en últimos 6 min · {_err_rec or 'respuesta vacía'}"
+            _df_rec_proc,_df_sal_rec = pd.DataFrame(),pd.DataFrame()
+            _debug_info = f"Sin CDRs en últimos 6 min"
     except Exception as _ex:
-        _df_rec_proc, _df_sal_rec = pd.DataFrame(), pd.DataFrame()
-        _debug_info = f"Error al consultar CDRs: {_ex}"
+        _df_rec_proc,_df_sal_rec = pd.DataFrame(),pd.DataFrame()
+        _debug_info = f"Error CDRs: {_ex}"
 
-    _notif_js = []  # mensajes para browser notification
-
+    _notif_js = []
     if not _df_rec_proc.empty and "escenario" in _df_rec_proc.columns:
-        _esc_perdida = {"no_respondió","múltiples_no_respuesta","agente_no_disponible",
-                        "rechazada","colgó_timbrando","perdida"}
         _perdidas_rec = _df_rec_proc[
             (_df_rec_proc["atendida"]==False) &
-            (_df_rec_proc["escenario"].isin(_esc_perdida))
+            (_df_rec_proc["escenario"].isin(ESC_RESPONSABLE))
         ]
-
-        for _, _row in _perdidas_rec.iterrows():
-            _cid = str(_row.get("original_callid",""))
-            _num = str(_row.get("numero_cliente","—"))
-            _esc = esc_es(_row.get("escenario",""))
+        for _,_row in _perdidas_rec.iterrows():
+            _cid  = str(_row.get("original_callid",""))
+            _num  = str(_row.get("numero_cliente","—"))
+            _esc  = esc_es(_row.get("escenario",""))
             _resp = str(_row.get("responsable","—"))
             _t    = _row.get("detect_time")
-
-            # ── Llamada perdida nueva ─────────────────────────────────────────
             if _cid not in st.session_state.notif_ids_vistos:
                 st.session_state.notif_ids_vistos.add(_cid)
-                st.session_state.notif_sin_devolver[_cid] = {
-                    "num": _num, "esc": _esc, "resp": _resp, "t": _t
-                }
-                st.toast(f"📵 Llamada perdida — {_num} ({_esc}) · Responsable: {_resp}", icon="🔔")
+                st.session_state.notif_sin_devolver[_cid] = {"num":_num,"esc":_esc,"resp":_resp,"t":_t}
+                st.toast(f"📵 Llamada perdida — {_num} ({_esc}) · {_resp}",icon="🔔")
                 _notif_js.append(f"Llamada perdida\\n{_num} | {_esc}\\nResponsable: {_resp}")
 
-        # ── Verificar si alguna perdida ya fue resuelta ───────────────────────
-        _cb = calcular_cumplimiento(_df_rec_proc, _df_sal_rec)
-        _resueltos = set()
+        _cb = calcular_cumplimiento(_df_rec_proc,_df_sal_rec)
         if not _cb.empty and "Cumplimiento" in _cb.columns:
-            _resueltos_df = _cb[_cb["Cumplimiento"]==True]
-            for _, _r in _resueltos_df.iterrows():
+            for _,_r in _cb[_cb["Cumplimiento"]==True].iterrows():
                 _n = norm_num(str(_r.get("Número","")))
-                for _k, _v in list(st.session_state.notif_sin_devolver.items()):
-                    if norm_num(_v["num"]) == _n:
-                        _resueltos.add(_k)
-        for _k in _resueltos:
-            st.session_state.notif_sin_devolver.pop(_k, None)
+                for _k,_v in list(st.session_state.notif_sin_devolver.items()):
+                    if norm_num(_v["num"])==_n:
+                        del st.session_state.notif_sin_devolver[_k]; break
 
-        # ── Llamadas sin devolver que superaron 5 min ─────────────────────────
-        for _cid, _info in list(st.session_state.notif_sin_devolver.items()):
+        _ventana_seg = st.session_state.cfg_ventana_cb * 60
+        for _cid,_info in list(st.session_state.notif_sin_devolver.items()):
             _t = _info.get("t")
             if _t is not None and pd.notna(_t):
-                _seg_trans = (_ahora - pd.Timestamp(_t)).total_seconds()
-                if _seg_trans > 300:  # más de 5 min sin resolución
-                    _alerta_key = f"alerta5_{_cid}"
-                    if _alerta_key not in st.session_state.notif_ids_vistos:
-                        st.session_state.notif_ids_vistos.add(_alerta_key)
-                        st.toast(f"⚠️ Sin devolver hace +5 min — {_info['num']} · {_info['resp']}", icon="🚨")
-                        _notif_js.append(f"⚠️ Sin devolver +5 min\\n{_info['num']}\\nResponsable: {_info['resp']}")
+                _seg = (_ahora - pd.Timestamp(_t)).total_seconds()
+                if _seg > _ventana_seg:
+                    _ak = f"alerta5_{_cid}"
+                    if _ak not in st.session_state.notif_ids_vistos:
+                        st.session_state.notif_ids_vistos.add(_ak)
+                        st.toast(f"⚠️ Sin devolver +{st.session_state.cfg_ventana_cb} min — {_info['num']} · {_info['resp']}",icon="🚨")
+                        _notif_js.append(f"⚠️ Sin devolver +{st.session_state.cfg_ventana_cb} min\\n{_info['num']}\\nResponsable: {_info['resp']}")
 
-    # ── Notificaciones del navegador (funciona en segundo plano) ─────────────
     if _notif_js:
-        _msgs_js = str(_notif_js).replace("'",'"')
-        components.html(f"""
-        <script>
-        const msgs = {_msgs_js};
-        function sendNotif(msg) {{
-            if (Notification.permission === "granted") {{
-                new Notification("🎯 Supervisor · Soporte", {{ body: msg, icon: "" }});
-            }} else if (Notification.permission !== "denied") {{
-                Notification.requestPermission().then(p => {{
-                    if (p === "granted") new Notification("🎯 Supervisor · Soporte", {{ body: msg }});
-                }});
-            }}
-        }}
-        msgs.forEach(m => sendNotif(m));
-        </script>
-        """, height=0)
+        _msgs = str(_notif_js).replace("'",'"')
+        components.html(f"""<script>
+        const msgs = {_msgs};
+        function sn(m){{if(Notification.permission==="granted"){{new Notification("🎯 Supervisor·Soporte",{{body:m}})}}
+        else if(Notification.permission!=="denied"){{Notification.requestPermission().then(p=>{{if(p==="granted")new Notification("🎯 Supervisor·Soporte",{{body:m}})}})}}}}
+        msgs.forEach(m=>sn(m));
+        </script>""",height=0)
 
-    # ── Panel de alertas activas ──────────────────────────────────────────────
-    if st.session_state.notif_sin_devolver:
-        _pendientes = []
-        for _cid, _info in st.session_state.notif_sin_devolver.items():
-            _t = _info.get("t")
-            _seg = int((_ahora - pd.Timestamp(_t)).total_seconds()) if _t is not None and pd.notna(_t) else 0
-            _pendientes.append((_seg, _info, _cid))
-        _pendientes.sort(reverse=True)
-
-        st.markdown(f"""<div style='background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);
-            border-radius:10px;padding:14px 18px;margin-bottom:16px'>
-          <div style='color:#EF4444;font-size:13px;font-weight:600;margin-bottom:10px'>
-            🚨 {len(_pendientes)} llamada{"s" if len(_pendientes)>1 else ""} sin resolver
-          </div>""", unsafe_allow_html=True)
-        for _seg, _info, _cid in _pendientes:
-            _color = "#EF4444" if _seg > 300 else "#F59E0B"
-            _badge = "⚠️ +5 MIN" if _seg > 300 else fmt_dur(_seg)
-            st.markdown(f"""<div style='display:flex;justify-content:space-between;align-items:center;
-                padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)'>
-              <div style='font-family:JetBrains Mono,monospace'>
-                <span style='color:#C8D8E8;font-size:13px'>{_info["num"]}</span>
-                <span style='color:#1A3050;font-size:11px;margin-left:10px'>{_info["esc"]}</span>
-              </div>
-              <div style='text-align:right'>
-                <div style='color:{_color};font-size:12px;font-weight:600'>{_badge}</div>
-                <div style='color:#1A3050;font-size:10px;font-family:JetBrains Mono,monospace'>{_info["resp"]}</div>
-              </div></div>""", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
     llamadas_activas = []
-
     if df_live is not None and not df_live.empty:
         df_lv = df_live.copy()
         for col in ["dnis_user","ani_user","original_callid","ref_callid","ani","dnis","connect_time","disconnect_time"]:
             if col in df_lv.columns:
                 df_lv[col] = df_lv[col].astype(str).str.strip().replace({"None":"","nan":"","null":"","<NA>":""})
-
-        agentes_reales = set(AGENTES_SIN_CENTRAL.keys())
-        df_lv_trn = df_lv[df_lv["dnis_user"] == CENTRAL_ID]
+        agentes_reales = set(get_agentes_sin_central().keys())
+        df_lv_trn = df_lv[df_lv["dnis_user"]==CENTRAL_ID]
         df_lv_ag  = df_lv[df_lv["dnis_user"].isin(agentes_reales)]
-
         ag_by_orig = {}
         for _,row in df_lv_ag.iterrows():
             orig = row.get("original_callid","")
             if not orig: continue
             if orig not in ag_by_orig or int(row.get("duration",0) or 0) > int(ag_by_orig[orig].get("duration",0) or 0):
                 ag_by_orig[orig] = row
-
         procesados = set()
         for _,trn in df_lv_trn.iterrows():
             disc_trn = str(trn.get("disconnect_time","") or "")
@@ -587,34 +704,27 @@ if live_mode:
             trn_orig = str(trn.get("original_callid","") or "")
             if trn_orig in procesados: continue
             procesados.add(trn_orig)
-
             ag_row = ag_by_orig.get(ref_cid)
             if ag_row is not None:
                 disc_ag = str(ag_row.get("disconnect_time","") or "")
-                if disc_ag not in ("","None","null","nan"): continue  # agente ya colgó
-
+                if disc_ag not in ("","None","null","nan"): continue
             ani_cliente  = str(trn.get("ani","-") or "-")
             dnis_marcado = str(trn.get("dnis","-") or "-")
-
+            # Excluir números de prueba en modo en vivo
+            if norm_num(ani_cliente) in {norm_num(n) for n in get_nums_excluidos()}: continue
             if ag_row is not None:
-                ag_id    = str(ag_row.get("dnis_user",""))
-                ag_dur   = int(ag_row.get("duration",0) or 0)
-                ag_ct    = str(ag_row.get("connect_time","") or "")
-                ag_ring  = max(0,int(ag_row.get("ring_time",0) or 0))
-                connected= ag_ct not in ("","None","null","nan")
-                if connected and ag_dur > 0:
-                    estado="en_llamada"; duracion=ag_dur; connect_time=ag_ct
-                else:
-                    estado="timbrando"; duracion=0; connect_time=""
+                ag_id=str(ag_row.get("dnis_user","")); ag_dur=int(ag_row.get("duration",0) or 0)
+                ag_ct=str(ag_row.get("connect_time","") or ""); ag_ring=max(0,int(ag_row.get("ring_time",0) or 0))
+                connected=ag_ct not in ("","None","null","nan")
+                if connected and ag_dur>0: estado="en_llamada"; duracion=ag_dur; connect_time=ag_ct
+                else: estado="timbrando"; duracion=0; connect_time=""
                 agente_conocido=True
             else:
-                ag_id=""; ag_ring=0
-                estado="conectando"; duracion=int(trn.get("duration",0) or 0)
-                connect_time=str(trn.get("connect_time","") or "")
+                ag_id=""; ag_ring=0; estado="conectando"
+                duracion=int(trn.get("duration",0) or 0); connect_time=str(trn.get("connect_time","") or "")
                 agente_conocido=False
-
             llamadas_activas.append({
-                "ag_id":ag_id,"agente":AGENTES.get(ag_id,"Por identificar") if ag_id else "Por identificar",
+                "ag_id":ag_id,"agente":get_agentes().get(ag_id,"Por identificar") if ag_id else "Por identificar",
                 "numero_cliente":ani_cliente,"dnis_marcado":dnis_marcado,
                 "duracion":duracion,"ring_time":ag_ring,"estado":estado,
                 "connect_time":connect_time,"agente_conocido":agente_conocido,
@@ -624,7 +734,7 @@ if live_mode:
     n_activas    = len(llamadas_activas)
     n_conectadas = sum(1 for c in llamadas_activas if c["estado"]=="en_llamada")
     n_timbrando  = sum(1 for c in llamadas_activas if c["estado"]=="timbrando")
-    n_libres     = len(AGENTES_SIN_CENTRAL)-len(ag_ocupados & set(AGENTES_SIN_CENTRAL))
+    n_libres     = len(get_agentes_sin_central())-len(ag_ocupados & set(get_agentes_sin_central()))
 
     st.markdown(f"""<div style='display:flex;align-items:center;justify-content:space-between;padding:14px 18px;
         background:#0C0F1C;border:1px solid rgba(239,68,68,.2);border-radius:12px;margin-bottom:20px'>
@@ -632,12 +742,13 @@ if live_mode:
         <div style='width:10px;height:10px;border-radius:50%;background:#EF4444;animation:blink 1s infinite'></div>
         <span style='color:#C8D8E8;font-size:17px;font-weight:300'>Monitoreo en Vivo</span>
         <span style='color:#1A3050;font-size:12px;font-family:JetBrains Mono,monospace'>{lbl}</span>
+        {"<span style='color:#EAB308;font-size:11px;background:rgba(234,179,8,.1);padding:2px 8px;border-radius:4px'>🧪 DEMO</span>" if st.session_state.cfg_modo_demo else ""}
       </div>
       <div style='display:flex;gap:20px;font-family:JetBrains Mono,monospace;font-size:12px'>
         <span style='color:#22C55E'>{n_conectadas} en llamada</span>
         <span style='color:#EAB308'>{n_timbrando} timbrando</span>
-        <span style='color:#1A3050'>refresca cada {intervalo}s</span>
-      </div></div>""", unsafe_allow_html=True)
+        <span style='color:#1A3050'>cada {intervalo}s</span>
+      </div></div>""",unsafe_allow_html=True)
 
     kc1,kc2,kc3,kc4 = st.columns(4)
     kc1.metric("Llamadas activas",n_activas)
@@ -645,10 +756,34 @@ if live_mode:
     kc3.metric("Timbrando",       n_timbrando)
     kc4.metric("Agentes libres",  n_libres)
     st.caption(f"🔍 {_debug_info}")
+
+    if st.session_state.notif_sin_devolver:
+        _pend = sorted(
+            [(_ahora-pd.Timestamp(_v["t"])).total_seconds() if _v.get("t") is not None and pd.notna(_v.get("t")) else 0, _v, _k]
+            for _k,_v in st.session_state.notif_sin_devolver.items()
+        , reverse=True)
+        st.markdown(f"""<div style='background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);
+            border-radius:10px;padding:14px 18px;margin-bottom:16px'>
+          <div style='color:#EF4444;font-size:13px;font-weight:600;margin-bottom:10px'>
+            🚨 {len(_pend)} llamada{"s" if len(_pend)>1 else ""} sin resolver</div>""",unsafe_allow_html=True)
+        for _seg,_info,_cid in _pend:
+            _c = "#EF4444" if _seg > st.session_state.cfg_ventana_cb*60 else "#F59E0B"
+            _b = f"⚠️ +{st.session_state.cfg_ventana_cb} MIN" if _seg > st.session_state.cfg_ventana_cb*60 else fmt_dur(int(_seg))
+            st.markdown(f"""<div style='display:flex;justify-content:space-between;align-items:center;
+                padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)'>
+              <div style='font-family:JetBrains Mono,monospace'>
+                <span style='color:#C8D8E8;font-size:13px'>{_info['num']}</span>
+                <span style='color:#1A3050;font-size:11px;margin-left:10px'>{_info['esc']}</span></div>
+              <div style='text-align:right'>
+                <div style='color:{_c};font-size:12px;font-weight:600'>{_b}</div>
+                <div style='color:#1A3050;font-size:10px;font-family:JetBrains Mono,monospace'>{_info['resp']}</div>
+              </div></div>""",unsafe_allow_html=True)
+        st.markdown("</div>",unsafe_allow_html=True)
+
     st.markdown("<br>",unsafe_allow_html=True)
     st.markdown("#### 👥 Estado de agentes")
     cols_ag = st.columns(3)
-    for i,(ag_id,ag_nombre) in enumerate(AGENTES_SIN_CENTRAL.items()):
+    for i,(ag_id,ag_nombre) in enumerate(get_agentes_sin_central().items()):
         llamada = next((c for c in llamadas_activas if c["ag_id"]==ag_id),None)
         if llamada is None:
             dot,borde="#22C55E","rgba(34,197,94,.2)"
@@ -686,9 +821,9 @@ if live_mode:
               <div style='display:flex;justify-content:space-between;align-items:flex-start'>
                 <div><div style='color:#C8D8E8;font-size:14px;font-weight:500'>{ag_nombre}</div>
                 <div style='color:#1A3050;font-size:10px;font-family:JetBrains Mono,monospace;margin-top:2px'>ID {ag_id}</div></div>
-                <div>{estado_h}</div></div>{det_h}</div>""", unsafe_allow_html=True)
+                <div>{estado_h}</div></div>{det_h}</div>""",unsafe_allow_html=True)
 
-    sin_asignar = [c for c in llamadas_activas if not c["agente_conocido"]]
+    sin_asignar=[c for c in llamadas_activas if not c["agente_conocido"]]
     if sin_asignar:
         st.markdown("---"); st.markdown("#### 📞 Llamadas en cola / por asignar")
         for c in sin_asignar:
@@ -697,18 +832,16 @@ if live_mode:
                 border-radius:10px;padding:14px 18px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center'>
               <div style='font-family:JetBrains Mono,monospace'>
                 <div style='color:#C8D8E8;font-size:14px'>📞 {c['numero_cliente']}</div>
-                <div style='color:#1A3050;font-size:11px;margin-top:4px'>DID: {c['dnis_marcado']} · Conectó: {c['connect_time'][:16] if c['connect_time'] else '—'}</div>
-              </div>
+                <div style='color:#1A3050;font-size:11px;margin-top:4px'>DID: {c['dnis_marcado']}</div></div>
               <div style='text-align:right;font-family:JetBrains Mono,monospace'>
                 <div style='color:#EAB308;font-size:18px;font-weight:300'>{df_}</div>
-                <div style='color:#92400E;font-size:10px'>agente identificando…</div></div></div>""", unsafe_allow_html=True)
+                <div style='color:#92400E;font-size:10px'>identificando…</div></div></div>""",unsafe_allow_html=True)
     elif n_activas==0:
         st.markdown("""<div style='text-align:center;padding:40px;background:#0C0F1C;
-            border:1px solid rgba(255,255,255,0.04);border-radius:12px;margin-top:8px'>
+            border:1px solid rgba(255,255,255,.04);border-radius:12px;margin-top:8px'>
           <div style='font-size:36px;margin-bottom:10px'>📵</div>
-          <div style='color:#1A3050;font-size:14px'>No hay llamadas activas en este momento</div>
-          <div style='color:#0F2030;font-size:11px;margin-top:6px;font-family:JetBrains Mono,monospace'>Todos los agentes libres</div>
-        </div>""", unsafe_allow_html=True)
+          <div style='color:#1A3050;font-size:14px'>No hay llamadas activas</div>
+        </div>""",unsafe_allow_html=True)
 
     time.sleep(intervalo); st.rerun(); st.stop()
 
@@ -722,11 +855,10 @@ lbl    = st.session_state.label
 
 if df_ent.empty and df_sal.empty: st.warning("Sin registros para el período."); st.stop()
 
-# ── KPIs ──────────────────────────────────────────────────────────────────────
 n_ent     = len(df_ent)
-n_ent_at  = int(df_ent["atendida"].sum())      if not df_ent.empty else 0
+n_ent_at  = int(df_ent["atendida"].sum())        if not df_ent.empty else 0
 n_ent_per = n_ent - n_ent_at
-pct_at    = round(n_ent_at/n_ent*100)           if n_ent else 0
+pct_at    = round(n_ent_at/n_ent*100)             if n_ent else 0
 n_sal     = len(df_sal)
 n_sal_ok  = int((df_sal["atendida"]==True).sum()) if not df_sal.empty else 0
 avg_dur   = safe_mean(df_ent,"duracion")
@@ -735,13 +867,14 @@ avg_esp   = safe_mean(df_ent,"espera_total")
 P = dict(paper_bgcolor="#06080F",plot_bgcolor="#06080F",
          font=dict(color="#2A4060",family="Outfit"),margin=dict(t=10,b=30,l=5,r=5))
 
+demo_badge_html = "<span style='color:#EAB308;font-size:11px;background:rgba(234,179,8,.1);padding:2px 8px;border-radius:4px;margin-left:10px'>🧪 MODO DEMO</span>" if st.session_state.cfg_modo_demo else ""
 st.markdown(f"""<div style='display:flex;align-items:flex-end;justify-content:space-between;
     padding:0 0 18px;border-bottom:1px solid rgba(255,255,255,.04);margin-bottom:22px'>
-  <div><div style='font-size:22px;font-weight:300;color:#C8D8E8'>Panel de Supervisor · Soporte</div>
+  <div><div style='font-size:22px;font-weight:300;color:#C8D8E8'>Panel de Supervisor · Soporte{demo_badge_html}</div>
     <div style='font-size:11px;color:#1A3050;font-family:JetBrains Mono,monospace;margin-top:4px'>
       {lbl} · {n_ent} entrantes · {n_sal} salientes</div></div>
   <div style='font-size:11px;color:#0F2030;font-family:JetBrains Mono,monospace'>{_U} · CallMyWay</div>
-</div>""", unsafe_allow_html=True)
+</div>""",unsafe_allow_html=True)
 
 c1,c2,c3,c4,c5,c6,c7,c8 = st.columns(8)
 c1.metric("Entrantes",       f"{n_ent:,}")
@@ -757,11 +890,10 @@ st.markdown("<br>",unsafe_allow_html=True)
 tabs = st.tabs(["VISIÓN GENERAL","ENTRANTES","SALIENTES","AGENTES","TURNOS","SEGUIMIENTO","CLIENTES","REGISTROS"])
 tab_ov,tab_ent,tab_sal,tab_ag,tab_tur,tab_seg,tab_cl,tab_raw_t = tabs
 
-# ── TAB 0: VISIÓN GENERAL ──────────────────────────────────────────────────────
 with tab_ov:
     r1,r2,r3 = st.columns([1.1,1.4,1.5])
     with r1:
-        fig_d = go.Figure(go.Pie(labels=["Atendidas","Perdidas"],values=[n_ent_at,n_ent_per],
+        fig_d=go.Figure(go.Pie(labels=["Atendidas","Perdidas"],values=[n_ent_at,n_ent_per],
             hole=0.7,marker=dict(colors=["#166534","#7F1D1D"],line=dict(width=0)),textinfo="none"))
         fig_d.add_annotation(text=f"<b>{pct_at}%</b>",x=0.5,y=0.56,font=dict(size=30,color="#C8D8E8"),showarrow=False)
         fig_d.add_annotation(text="atención",x=0.5,y=0.40,font=dict(size=12,color="#2A4060"),showarrow=False)
@@ -796,7 +928,7 @@ with tab_ov:
                 marker_color=ec["color"],marker_line_width=0,
                 text=ec["n"],textposition="outside",textfont=dict(size=11,color="#2A4060")))
             fig_ec.update_layout(height=240,**P,
-                title=dict(text="Escenarios de llamada",font=dict(size=12,color="#2A4060"),x=0),
+                title=dict(text="Escenarios",font=dict(size=12,color="#2A4060"),x=0),
                 xaxis=dict(gridcolor="rgba(255,255,255,.03)",title=""),
                 yaxis=dict(gridcolor="rgba(255,255,255,.03)",title=""))
             st.plotly_chart(fig_ec,use_container_width=True)
@@ -815,7 +947,6 @@ with tab_ov:
                 title=dict(text="Evolución diaria",font=dict(size=12,color="#2A4060"),x=0))
             st.plotly_chart(fig_ev,use_container_width=True)
 
-# ── TAB 1: ENTRANTES ───────────────────────────────────────────────────────────
 with tab_ent:
     if df_ent.empty: st.info("Sin llamadas entrantes.")
     else:
@@ -834,9 +965,8 @@ with tab_ent:
         elif f_est=="Perdidas": dv=dv[dv["atendida"]==False]
         if f_esc!="Todos" and "escenario_es" in dv.columns: dv=dv[dv["escenario_es"]==f_esc]
         if f_ag!="Todos": dv=dv[dv["agente"]==f_ag]
-        cols_t=[c for c in ["detect_time","numero_cliente","escenario_es","agente",
-                             "agente_timbrando","espera_usuario",
-                             "responsable","agente_turno","duracion","espera_total","n_intentos"] if c in dv.columns]
+        cols_t=[c for c in ["detect_time","numero_cliente","escenario_es","agente","agente_timbrando",
+                             "espera_usuario","responsable","agente_turno","duracion","espera_total","n_intentos"] if c in dv.columns]
         ds=dv[cols_t].copy()
         for col,fn in [("duracion",fmt_dur),("espera_total",fmt_dur),("espera_usuario",fmt_dur)]:
             if col in ds.columns: ds[col]=ds[col].apply(fn)
@@ -850,16 +980,15 @@ with tab_ent:
         with ec1: st.download_button("⬇ Exportar entrantes",data=df_ent.to_csv(index=False).encode("utf-8-sig"),file_name=f"entrantes_{hoy_lima.strftime('%Y%m%d')}.csv",mime="text/csv")
         with ec2: st.download_button("⬇ Exportar perdidas",data=df_ent[df_ent["atendida"]==False].to_csv(index=False).encode("utf-8-sig"),file_name=f"perdidas_{hoy_lima.strftime('%Y%m%d')}.csv",mime="text/csv")
 
-# ── TAB 2: SALIENTES ───────────────────────────────────────────────────────────
 with tab_sal:
     if df_sal.empty: st.info("Sin llamadas salientes.")
     else:
         s1,s2,s3,s4=st.columns(4)
         dur_s=df_sal[df_sal["atendida"]==True]["duration"].dropna()
-        s1.metric("Total salientes", f"{n_sal:,}")
-        s2.metric("Conectadas",      f"{n_sal_ok:,}",f"{round(n_sal_ok/n_sal*100) if n_sal else 0}%")
-        s3.metric("No conectadas",   f"{n_sal-n_sal_ok:,}")
-        s4.metric("Duración prom.",  fmt_dur(int(dur_s.mean()) if len(dur_s) else 0))
+        s1.metric("Total",          f"{n_sal:,}")
+        s2.metric("Conectadas",     f"{n_sal_ok:,}",f"{round(n_sal_ok/n_sal*100) if n_sal else 0}%")
+        s3.metric("No conectadas",  f"{n_sal-n_sal_ok:,}")
+        s4.metric("Duración prom.", fmt_dur(int(dur_s.mean()) if len(dur_s) else 0))
         st.markdown("<br>",unsafe_allow_html=True)
         sc1,sc2=st.columns(2)
         with sc1:
@@ -888,10 +1017,9 @@ with tab_sal:
         dss=dss.rename(columns={"detect_time":"Fecha/Hora","agente":"Agente","numero_cliente":"Número","atendida":"Estado","duration":"Duración","end_reason_es":"Resultado"})
         st.dataframe(dss,use_container_width=True,height=360,hide_index=True)
 
-# ── TAB 3: AGENTES ─────────────────────────────────────────────────────────────
 with tab_ag:
     ag_data=[]
-    for aid,nombre in AGENTES_SIN_CENTRAL.items():
+    for aid,nombre in get_agentes_sin_central().items():
         ea=df_ent[df_ent["agente"]==nombre] if not df_ent.empty else pd.DataFrame()
         durs=ea["duracion"].dropna().tolist() if "duracion" in ea.columns else []
         per_t=len(df_ent[(df_ent["responsable"]==nombre)&(df_ent["atendida"]==False)]) if not df_ent.empty and "responsable" in df_ent.columns else 0
@@ -916,11 +1044,7 @@ with tab_ag:
                 <div style='width:{pct}%;height:100%;background:{bc};border-radius:4px'></div></div>
               <div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:11px;font-family:JetBrains Mono,monospace'>
                 {"".join([f"<div style='background:rgba(255,255,255,.03);border-radius:6px;padding:6px;text-align:center'><div style='color:#1A3050;font-size:9px'>{l}</div><div style='color:#7A9ABA;margin-top:2px'>{v}</div></div>" for l,v in [("DUR.PROM",fmt_dur(ag['avg_dur'])),("SALIENTES",ag['salientes']),("PERD.TURNO",ag['per_turno'])]])}
-              </div>
-              <div style='margin-top:8px;display:flex;justify-content:space-between;font-size:10px;font-family:JetBrains Mono,monospace'>
-                <span style='color:#EF4444'>{ag['per_turno']} perd. en turno</span>
-                <span style='color:#1A3050'>{ag['total_min']} min · {pct}% at.</span></div>
-            </div>""",unsafe_allow_html=True)
+              </div></div>""",unsafe_allow_html=True)
     if ag_data:
         st.markdown("---"); df_ap=pd.DataFrame(ag_data)
         gc1,gc2=st.columns(2)
@@ -930,32 +1054,29 @@ with tab_ag:
             fig_c.add_trace(go.Bar(name="Salientes",x=df_ap["nombre"],y=df_ap["salientes"],marker_color="#4A0404",marker_line_width=0))
             fig_c.update_layout(height=280,barmode="group",**P,xaxis_title="",yaxis=dict(gridcolor="rgba(255,255,255,.03)",title=""),
                 legend=dict(font_size=11,orientation="h",y=-0.2,font_color="#2A4060"),
-                title=dict(text="Comparativa por agente",font=dict(size=12,color="#2A4060"),x=0))
+                title=dict(text="Comparativa",font=dict(size=12,color="#2A4060"),x=0))
             st.plotly_chart(fig_c,use_container_width=True)
         with gc2:
             fig_d2=px.bar(df_ap[df_ap["avg_dur"]>0].sort_values("avg_dur"),x="avg_dur",y="nombre",orientation="h",
                 color="avg_dur",color_continuous_scale=["#0F172A","#1D4ED8","#3B82F6","#93C5FD"])
             fig_d2.update_layout(height=280,coloraxis_showscale=False,**P,
-                xaxis=dict(gridcolor="rgba(255,255,255,.03)",title="segundos"),yaxis_title="",
+                xaxis=dict(gridcolor="rgba(255,255,255,.03)",title="seg"),yaxis_title="",
                 title=dict(text="Duración promedio",font=dict(size=12,color="#2A4060"),x=0))
             fig_d2.update_traces(marker_line_width=0); st.plotly_chart(fig_d2,use_container_width=True)
 
-# ── TAB 4: TURNOS ──────────────────────────────────────────────────────────────
 with tab_tur:
-    if df_ent.empty: st.info("Sin datos para analizar turnos.")
+    if df_ent.empty: st.info("Sin datos.")
     else:
-        st.markdown("#### 📅 Horario de turnos")
-        st.dataframe(pd.DataFrame([
-            {"Días":"Lun–Vie","Turno":"Mañana","Horario":"06:00–14:00","Agente":"Alonso Loyola",    "ID":"8668109","Estado":"✅"},
-            {"Días":"Lun–Vie","Turno":"Tarde", "Horario":"14:00–22:00","Agente":"Jose Luis Cahuana","ID":"8668110","Estado":"✅"},
-            {"Días":"Lun–Vie","Turno":"Noche", "Horario":"22:00–06:00","Agente":"Deivy Chavez",     "ID":"8668111","Estado":"✅"},
-            {"Días":"Sáb–Dom","Turno":"Mañana","Horario":"06:00–14:00","Agente":"Daniel Huayta",    "ID":"8668112","Estado":"✅"},
-            {"Días":"Sáb–Dom","Turno":"Tarde", "Horario":"14:00–22:00","Agente":"Luz Goicochea",    "ID":"pendiente","Estado":"⏳ Sin ID"},
-            {"Días":"Sáb–Dom","Turno":"Noche", "Horario":"22:00–06:00","Agente":"Joe Villanueva",   "ID":"8668114","Estado":"✅"},
-        ]),use_container_width=True,hide_index=True,height=250)
+        turno_rows=[]
+        DIAS_NOM={0:"Lun",1:"Mar",2:"Mié",3:"Jue",4:"Vie",5:"Sáb",6:"Dom"}
+        for t in st.session_state.cfg_turnos:
+            dias_str=", ".join(DIAS_NOM[d] for d in t["dias"])
+            h_fin_str=f"{t['h_fin']}h" if t['h_fin']<=24 else f"{t['h_fin']-24}h (+1)"
+            turno_rows.append({"Días":dias_str,"Horario":f"{t['h_ini']}:00–{h_fin_str}",
+                "Agente":t["agente"],"Estado":"✅" if t.get("activo",True) else "⏸"})
+        st.dataframe(pd.DataFrame(turno_rows),use_container_width=True,hide_index=True,height=250)
         st.markdown("---")
         if "responsable" in df_ent.columns:
-            st.markdown("#### 📊 Rendimiento por responsable de turno")
             ts=[]
             for resp in sorted(df_ent["responsable"].dropna().unique()):
                 sub=df_ent[df_ent["responsable"]==resp]; tot=len(sub); at=int((sub["atendida"]==True).sum())
@@ -963,37 +1084,12 @@ with tab_tur:
                 ts.append({"Responsable":resp,"Total":tot,"Atendidas":at,"Perdidas":tot-at,
                     "% Atención":round(at/tot*100) if tot else 0,"Dur. prom.":fmt_dur(int(drs.mean()) if len(drs) else 0)})
             df_ts=pd.DataFrame(ts).sort_values("% Atención",ascending=False)
-            st.dataframe(df_ts,use_container_width=True,hide_index=True,height=280)
-            tc1,tc2=st.columns(2)
-            with tc1:
-                fig_tr=go.Figure()
-                fig_tr.add_trace(go.Bar(name="Atendidas",x=df_ts["Responsable"],y=df_ts["Atendidas"],marker_color="#166534",marker_line_width=0))
-                fig_tr.add_trace(go.Bar(name="Perdidas", x=df_ts["Responsable"],y=df_ts["Perdidas"], marker_color="#7F1D1D",marker_line_width=0))
-                fig_tr.update_layout(height=300,barmode="stack",**P,
-                    xaxis=dict(tickangle=-20,tickfont_size=11),yaxis=dict(gridcolor="rgba(255,255,255,.03)",title=""),
-                    legend=dict(font_size=11,orientation="h",y=-0.2,font_color="#2A4060"),
-                    title=dict(text="Llamadas por responsable",font=dict(size=12,color="#2A4060"),x=0))
-                st.plotly_chart(fig_tr,use_container_width=True)
-            with tc2:
-                fig_pct=px.bar(df_ts.sort_values("% Atención"),x="% Atención",y="Responsable",orientation="h",
-                    color="% Atención",color_continuous_scale=["#7F1D1D","#92400E","#166534"],range_color=[0,100],text="% Atención")
-                fig_pct.update_traces(marker_line_width=0,texttemplate="%{text}%",textposition="outside",textfont=dict(size=11,color="#2A4060"))
-                fig_pct.update_layout(height=300,coloraxis_showscale=False,**P,
-                    xaxis=dict(gridcolor="rgba(255,255,255,.03)",title="",range=[0,115]),yaxis_title="",
-                    title=dict(text="% Atención por responsable",font=dict(size=12,color="#2A4060"),x=0))
-                st.plotly_chart(fig_pct,use_container_width=True)
+            st.dataframe(df_ts,use_container_width=True,hide_index=True)
 
-# ── TAB 5: SEGUIMIENTO ─────────────────────────────────────────────────────────
 with tab_seg:
-    st.markdown("#### 📋 Seguimiento de llamadas perdidas — ventana de 5 minutos")
-    st.markdown("""<div style='background:#0C0F1C;border:1px solid rgba(80,120,200,.15);border-radius:8px;
-        padding:12px 16px;margin-bottom:20px;font-size:13px;color:#4A7ABA'>
-        <b>Cumplimiento</b> si en ≤5 min: el agente llamó de vuelta (<i>saliente conectada</i>)
-        <b>o</b> el cliente volvió a llamar y fue atendido. Solo aplica a escenarios con responsabilidad del agente.
-    </div>""",unsafe_allow_html=True)
+    st.markdown(f"#### 📋 Seguimiento — ventana de **{st.session_state.cfg_ventana_cb} minutos**")
     df_cb=calcular_cumplimiento(df_ent,df_sal)
-    if df_cb.empty:
-        st.info("No hay llamadas perdidas con responsabilidad de agente en este período.")
+    if df_cb.empty: st.info("No hay llamadas perdidas con responsabilidad de agente.")
     else:
         total_per=len(df_cb); cumpl=int(df_cb["Cumplimiento"].sum())
         no_cumpl=total_per-cumpl; pct_cumpl=round(cumpl/total_per*100) if total_per else 0
@@ -1003,7 +1099,6 @@ with tab_seg:
         sc2.metric("✅ Con resolución",      f"{cumpl:,}",  f"{pct_cumpl}%")
         sc3.metric("❌ Sin resolución",      f"{no_cumpl:,}",f"-{100-pct_cumpl}%")
         sc4.metric("T. prom. respuesta",    fmt_dur(int(avg_t)) if not pd.isna(avg_t) else "—")
-        st.markdown("<br>",unsafe_allow_html=True)
         if "Responsable" in df_cb.columns:
             cb_ag=df_cb.groupby(["Responsable","Cumplimiento"]).size().reset_index(name="n")
             cb_ag["estado"]=cb_ag["Cumplimiento"].map({True:"✅ Resuelto",False:"❌ Sin resolver"})
@@ -1014,7 +1109,7 @@ with tab_seg:
                 title=dict(text="Cumplimiento por responsable",font=dict(size=12,color="#2A4060"),x=0))
             fig_cb.update_traces(marker_line_width=0); st.plotly_chart(fig_cb,use_container_width=True)
         sf1,sf2,sf3=st.columns([2,1,1])
-        with sf1: busq_cb=st.text_input("🔍 Buscar número",key="busq_cb")
+        with sf1: busq_cb=st.text_input("🔍 Buscar",key="busq_cb")
         with sf2: f_resp=st.selectbox("Responsable",["Todos"]+sorted(df_cb["Responsable"].dropna().unique().tolist()),key="fresp_cb")
         with sf3: f_cumpl=st.selectbox("Estado",["Todos","✅ Resuelto","❌ Sin resolver"],key="fcumpl_cb")
         dcb=df_cb.copy()
@@ -1022,16 +1117,12 @@ with tab_seg:
         if f_resp!="Todos": dcb=dcb[dcb["Responsable"]==f_resp]
         if f_cumpl=="✅ Resuelto": dcb=dcb[dcb["Cumplimiento"]==True]
         elif f_cumpl=="❌ Sin resolver": dcb=dcb[dcb["Cumplimiento"]==False]
-        dcb_show=dcb.drop(columns=["Cumplimiento","_seg"],errors="ignore")
-        st.caption(f"{len(dcb):,} registros · {int(dcb['Cumplimiento'].sum()) if 'Cumplimiento' in dcb.columns else 0} resueltos")
-        st.dataframe(dcb_show,use_container_width=True,height=440,hide_index=True)
-        st.download_button("⬇ Exportar seguimiento CSV",
-            data=dcb.drop(columns=["_seg"],errors="ignore").to_csv(index=False).encode("utf-8-sig"),
+        st.dataframe(dcb.drop(columns=["Cumplimiento","_seg"],errors="ignore"),use_container_width=True,height=440,hide_index=True)
+        st.download_button("⬇ Exportar",data=dcb.drop(columns=["_seg"],errors="ignore").to_csv(index=False).encode("utf-8-sig"),
             file_name=f"seguimiento_{hoy_lima.strftime('%Y%m%d')}.csv",mime="text/csv")
 
-# ── TAB 6: CLIENTES ────────────────────────────────────────────────────────────
 with tab_cl:
-    if df_ent.empty: st.info("Sin datos de clientes.")
+    if df_ent.empty: st.info("Sin datos.")
     else:
         cl=df_ent.groupby("numero_cliente").agg(
             total=("numero_cliente","count"),atendidas=("atendida","sum"),
@@ -1041,17 +1132,16 @@ with tab_cl:
         cl["perdidas"]=cl["total"]-cl["atendidas"]
         cl["pct_at"]=(cl["atendidas"]/cl["total"]*100).round(0).astype(int)
         cl=cl.sort_values("total",ascending=False)
-        st.markdown(f"**{len(cl):,} números únicos** en este período")
         cp=cl[cl["perdidas"]>=2].sort_values("perdidas",ascending=False).head(10)
         if not cp.empty:
-            st.markdown("#### ⚠️ Clientes con 2+ llamadas perdidas")
+            st.markdown("#### ⚠️ Clientes con 2+ perdidas")
             for _,row in cp.iterrows():
                 urg="🔴" if row["perdidas"]>=5 else "🟡" if row["perdidas"]>=3 else "🟠"
                 st.markdown(f"""<div style='background:#0C0F1C;border:1px solid rgba(239,68,68,.2);border-radius:8px;
-                    padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between'>
-                  <div><span style='color:#C8D8E8;font-family:JetBrains Mono,monospace;font-size:14px'>{urg} {row['numero_cliente']}</span>
-                  <span style='color:#1A3050;font-size:11px;margin-left:12px'>Último: {str(row['ultima'])[:16] if pd.notna(row['ultima']) else '—'}</span></div>
-                  <div style='text-align:right;font-size:12px;font-family:JetBrains Mono,monospace'>
+                    padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between'>
+                  <div><span style='color:#C8D8E8;font-family:JetBrains Mono,monospace'>{urg} {row['numero_cliente']}</span>
+                  <span style='color:#1A3050;font-size:11px;margin-left:12px'>{str(row['ultima'])[:16] if pd.notna(row['ultima']) else '—'}</span></div>
+                  <div style='font-size:12px;font-family:JetBrains Mono,monospace'>
                     <span style='color:#EF4444'>{int(row['perdidas'])} perdidas</span>
                     <span style='color:#1A3050;margin-left:10px'>de {int(row['total'])}</span></div>
                 </div>""",unsafe_allow_html=True)
@@ -1063,12 +1153,11 @@ with tab_cl:
         cl_s=cl[["numero_cliente","total","atendidas","perdidas","pct_at","ag_frec","ultima"]].copy()
         cl_s["ultima"]=cl_s["ultima"].astype(str).str[:16]
         cl_s=cl_s.rename(columns={"numero_cliente":"Número","total":"Total","atendidas":"Atendidas",
-            "perdidas":"Perdidas","pct_at":"% At.","ag_frec":"Agente frecuente","ultima":"Última llamada"})
+            "perdidas":"Perdidas","pct_at":"% At.","ag_frec":"Agente frecuente","ultima":"Última"})
         st.dataframe(cl_s,use_container_width=True,height=320,hide_index=True)
 
-# ── TAB 7: REGISTROS RAW ───────────────────────────────────────────────────────
 with tab_raw_t:
-    st.markdown("#### Registros completos sin procesar")
+    st.markdown("#### Registros sin procesar")
     if df_raw is not None and not df_raw.empty:
         busq_r=st.text_input("Buscar",key="busq_raw")
         dr=df_raw.copy()
@@ -1077,15 +1166,12 @@ with tab_raw_t:
             for c in ["ani","dnis","callid","original_callid","ani_user","dnis_user"]:
                 if c in dr.columns: mask|=dr[c].astype(str).str.contains(busq_r,case=False,na=False)
             dr=dr[mask]
-        cols_r=[c for c in ["detect_time","type","ani","dnis","ani_user","dnis_user","duration","ring_time","end_reason","connect_time","route_name","original_callid"] if c in dr.columns]
+        cols_r=[c for c in ["detect_time","type","ani","dnis","ani_user","dnis_user","duration","ring_time","end_reason","connect_time","original_callid"] if c in dr.columns]
         rs1,rs2,rs3,rs4=st.columns(4)
-        rs1.metric("Registros totales",f"{len(df_raw):,}")
-        rs2.metric("Con duration>0",  f"{int((df_raw['duration']>0).sum()):,}" if "duration" in df_raw.columns else "—")
-        rs3.metric("Entrantes",       f"{int((df_raw['type']=='incoming').sum()):,}" if "type" in df_raw.columns else "—")
-        rs4.metric("Salientes",       f"{int((df_raw['type']=='outgoing').sum()):,}" if "type" in df_raw.columns else "—")
-        st.dataframe(dr[cols_r].rename(columns={"detect_time":"Fecha","type":"Tipo","ani":"ANI","dnis":"DNIS",
-            "ani_user":"ANI User","dnis_user":"DNIS User","duration":"Dur(s)","ring_time":"Ring(s)",
-            "end_reason":"Motivo","connect_time":"Conectó","route_name":"Ruta","original_callid":"CID"}),
-            use_container_width=True,height=460,hide_index=True)
-        st.download_button("⬇ Exportar raw CSV",data=dr[cols_r].to_csv(index=False).encode("utf-8-sig"),
+        rs1.metric("Total",    f"{len(df_raw):,}")
+        rs2.metric("Dur>0",    f"{int((df_raw['duration']>0).sum()):,}" if "duration" in df_raw.columns else "—")
+        rs3.metric("Incoming", f"{int((df_raw['type']=='incoming').sum()):,}" if "type" in df_raw.columns else "—")
+        rs4.metric("Outgoing", f"{int((df_raw['type']=='outgoing').sum()):,}" if "type" in df_raw.columns else "—")
+        st.dataframe(dr[cols_r],use_container_width=True,height=460,hide_index=True)
+        st.download_button("⬇ Exportar raw",data=dr[cols_r].to_csv(index=False).encode("utf-8-sig"),
             file_name=f"raw_{hoy_lima.strftime('%Y%m%d_%H%M')}.csv",mime="text/csv")
