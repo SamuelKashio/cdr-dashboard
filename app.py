@@ -579,8 +579,8 @@ if live_mode:
 # ══════════════════════════════════════════════════════════════════════════════
 # MODO HISTÓRICO
 # ══════════════════════════════════════════════════════════════════════════════
-df_ent = st.session_state.df_ent or pd.DataFrame()
-df_sal = st.session_state.df_sal or pd.DataFrame()
+df_ent = st.session_state.df_ent if st.session_state.df_ent is not None else pd.DataFrame()
+df_sal = st.session_state.df_sal if st.session_state.df_sal is not None else pd.DataFrame()
 df_raw = st.session_state.df_raw
 lbl    = st.session_state.label
 
