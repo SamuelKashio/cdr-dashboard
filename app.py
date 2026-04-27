@@ -41,13 +41,15 @@ DEFAULT_TURNOS = [
 ]
 DEFAULT_NUMS_EXCLUIDOS = ["51902871550"]
 
-# ── Inicializar configuración en sesión ────────────────────────────────────────
-if "cfg_agentes"       not in st.session_state: st.session_state.cfg_agentes       = json.loads(json.dumps(DEFAULT_AGENTES))
-if "cfg_turnos"        not in st.session_state: st.session_state.cfg_turnos         = json.loads(json.dumps(DEFAULT_TURNOS))
-if "cfg_nums_excluidos"not in st.session_state: st.session_state.cfg_nums_excluidos = list(DEFAULT_NUMS_EXCLUIDOS)
-if "cfg_ventana_cb"    not in st.session_state: st.session_state.cfg_ventana_cb     = 5  # minutos
-if "cfg_modo_demo"     not in st.session_state: st.session_state.cfg_modo_demo      = False
-if "show_config"       not in st.session_state: st.session_state.show_config        = False
+# ── Inicializar configuración en sesión (carga desde disco si existe) ──────────
+if "cfg_loaded" not in st.session_state:
+    _ag, _tu, _ne, _vc, _md = load_config()
+    st.session_state.cfg_agentes        = _ag
+    st.session_state.cfg_turnos         = _tu
+    st.session_state.cfg_nums_excluidos = _ne
+    st.session_state.cfg_ventana_cb     = _vc
+    st.session_state.cfg_modo_demo      = _md
+    st.session_state.cfg_loaded         = True
 
 # ── Accesores de configuración activa ─────────────────────────────────────────
 def get_agentes():
@@ -529,12 +531,29 @@ def render_config():
             st.session_state.cfg_nums_excluidos = list(DEFAULT_NUMS_EXCLUIDOS)
             st.session_state.cfg_ventana_cb     = 5
             st.session_state.cfg_modo_demo      = False
+            save_config()
             st.success("Configuración restablecida"); st.rerun()
 
     st.markdown("---")
-    if st.button("✅ Cerrar configuración", type="primary", use_container_width=True):
-        st.session_state.show_config = False
-        st.rerun()
+    col_save, col_close = st.columns(2)
+    with col_save:
+        if st.button("💾 Guardar configuración", type="primary", use_container_width=True):
+            if save_config():
+                st.success("✅ Configuración guardada — persistirá tras refrescar la página")
+                time.sleep(1)
+                st.session_state.show_config = False
+                st.rerun()
+    with col_close:
+        if st.button("✖ Cerrar sin guardar", use_container_width=True):
+            # Recargar desde disco para descartar cambios no guardados
+            _ag, _tu, _ne, _vc, _md = load_config()
+            st.session_state.cfg_agentes        = _ag
+            st.session_state.cfg_turnos         = _tu
+            st.session_state.cfg_nums_excluidos = _ne
+            st.session_state.cfg_ventana_cb     = _vc
+            st.session_state.cfg_modo_demo      = _md
+            st.session_state.show_config = False
+            st.rerun()
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 hoy_lima = now_lima()
