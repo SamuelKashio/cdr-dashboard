@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import pandas as pd
 import plotly.express as px
@@ -421,6 +422,124 @@ if not st.session_state.loaded: st.info("Configura el período y pulsa **Consult
 if live_mode:
     df_live = st.session_state.get("df_live_raw",pd.DataFrame())
     lbl     = st.session_state.label
+
+    # ── Inicializar estado de notificaciones ──────────────────────────────────
+    if "notif_ids_vistos" not in st.session_state:
+        st.session_state.notif_ids_vistos = set()
+    if "notif_sin_devolver" not in st.session_state:
+        st.session_state.notif_sin_devolver = {}  # callid → detect_time
+
+    # ── Consultar CDRs recientes para detectar perdidas nuevas ────────────────
+    _ahora = now_lima()
+    _hace5 = (_ahora - timedelta(minutes=6)).strftime("%Y-%m-%d %H:%M:%S")
+    _hasta = _ahora.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        _df_rec, _ = fetch_cdrs(date_start=_hace5, date_end=_hasta)
+        if _df_rec is not None and not _df_rec.empty:
+            _df_rec_proc, _df_sal_rec, _ = procesar(_df_rec)
+        else:
+            _df_rec_proc, _df_sal_rec = pd.DataFrame(), pd.DataFrame()
+    except:
+        _df_rec_proc, _df_sal_rec = pd.DataFrame(), pd.DataFrame()
+
+    _notif_js = []  # mensajes para browser notification
+
+    if not _df_rec_proc.empty and "escenario" in _df_rec_proc.columns:
+        _esc_perdida = {"no_respondió","múltiples_no_respuesta","agente_no_disponible",
+                        "rechazada","colgó_timbrando","perdida"}
+        _perdidas_rec = _df_rec_proc[
+            (_df_rec_proc["atendida"]==False) &
+            (_df_rec_proc["escenario"].isin(_esc_perdida))
+        ]
+
+        for _, _row in _perdidas_rec.iterrows():
+            _cid = str(_row.get("original_callid",""))
+            _num = str(_row.get("numero_cliente","—"))
+            _esc = esc_es(_row.get("escenario",""))
+            _resp = str(_row.get("responsable","—"))
+            _t    = _row.get("detect_time")
+
+            # ── Llamada perdida nueva ─────────────────────────────────────────
+            if _cid not in st.session_state.notif_ids_vistos:
+                st.session_state.notif_ids_vistos.add(_cid)
+                st.session_state.notif_sin_devolver[_cid] = {
+                    "num": _num, "esc": _esc, "resp": _resp, "t": _t
+                }
+                st.toast(f"📵 Llamada perdida — {_num} ({_esc}) · Responsable: {_resp}", icon="🔔")
+                _notif_js.append(f"Llamada perdida\\n{_num} | {_esc}\\nResponsable: {_resp}")
+
+        # ── Verificar si alguna perdida ya fue resuelta ───────────────────────
+        _cb = calcular_cumplimiento(_df_rec_proc, _df_sal_rec)
+        _resueltos = set()
+        if not _cb.empty and "Cumplimiento" in _cb.columns:
+            _resueltos_df = _cb[_cb["Cumplimiento"]==True]
+            for _, _r in _resueltos_df.iterrows():
+                _n = norm_num(str(_r.get("Número","")))
+                for _k, _v in list(st.session_state.notif_sin_devolver.items()):
+                    if norm_num(_v["num"]) == _n:
+                        _resueltos.add(_k)
+        for _k in _resueltos:
+            st.session_state.notif_sin_devolver.pop(_k, None)
+
+        # ── Llamadas sin devolver que superaron 5 min ─────────────────────────
+        for _cid, _info in list(st.session_state.notif_sin_devolver.items()):
+            _t = _info.get("t")
+            if _t is not None and pd.notna(_t):
+                _seg_trans = (_ahora - pd.Timestamp(_t)).total_seconds()
+                if _seg_trans > 300:  # más de 5 min sin resolución
+                    _alerta_key = f"alerta5_{_cid}"
+                    if _alerta_key not in st.session_state.notif_ids_vistos:
+                        st.session_state.notif_ids_vistos.add(_alerta_key)
+                        st.toast(f"⚠️ Sin devolver hace +5 min — {_info['num']} · {_info['resp']}", icon="🚨")
+                        _notif_js.append(f"⚠️ Sin devolver +5 min\\n{_info['num']}\\nResponsable: {_info['resp']}")
+
+    # ── Notificaciones del navegador (funciona en segundo plano) ─────────────
+    if _notif_js:
+        _msgs_js = str(_notif_js).replace("'",'"')
+        components.html(f"""
+        <script>
+        const msgs = {_msgs_js};
+        function sendNotif(msg) {{
+            if (Notification.permission === "granted") {{
+                new Notification("🎯 Supervisor · Soporte", {{ body: msg, icon: "" }});
+            }} else if (Notification.permission !== "denied") {{
+                Notification.requestPermission().then(p => {{
+                    if (p === "granted") new Notification("🎯 Supervisor · Soporte", {{ body: msg }});
+                }});
+            }}
+        }}
+        msgs.forEach(m => sendNotif(m));
+        </script>
+        """, height=0)
+
+    # ── Panel de alertas activas ──────────────────────────────────────────────
+    if st.session_state.notif_sin_devolver:
+        _pendientes = []
+        for _cid, _info in st.session_state.notif_sin_devolver.items():
+            _t = _info.get("t")
+            _seg = int((_ahora - pd.Timestamp(_t)).total_seconds()) if _t is not None and pd.notna(_t) else 0
+            _pendientes.append((_seg, _info, _cid))
+        _pendientes.sort(reverse=True)
+
+        st.markdown(f"""<div style='background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);
+            border-radius:10px;padding:14px 18px;margin-bottom:16px'>
+          <div style='color:#EF4444;font-size:13px;font-weight:600;margin-bottom:10px'>
+            🚨 {len(_pendientes)} llamada{"s" if len(_pendientes)>1 else ""} sin resolver
+          </div>""", unsafe_allow_html=True)
+        for _seg, _info, _cid in _pendientes:
+            _color = "#EF4444" if _seg > 300 else "#F59E0B"
+            _badge = "⚠️ +5 MIN" if _seg > 300 else fmt_dur(_seg)
+            st.markdown(f"""<div style='display:flex;justify-content:space-between;align-items:center;
+                padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)'>
+              <div style='font-family:JetBrains Mono,monospace'>
+                <span style='color:#C8D8E8;font-size:13px'>{_info["num"]}</span>
+                <span style='color:#1A3050;font-size:11px;margin-left:10px'>{_info["esc"]}</span>
+              </div>
+              <div style='text-align:right'>
+                <div style='color:{_color};font-size:12px;font-weight:600'>{_badge}</div>
+                <div style='color:#1A3050;font-size:10px;font-family:JetBrains Mono,monospace'>{_info["resp"]}</div>
+              </div></div>""", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
     llamadas_activas = []
 
     if df_live is not None and not df_live.empty:
