@@ -719,6 +719,8 @@ st.markdown(f"""
   <div style='font-size:11px;color:#0F2030;font-family:JetBrains Mono,monospace'>{_U} · CallMyWay</div>
 </div>""", unsafe_allow_html=True)
 
+_avg_dur = locals().get("avg_dur_ent", 0) or 0
+_avg_esp = locals().get("avg_esp",     0) or 0
 c1,c2,c3,c4,c5,c6,c7,c8 = st.columns(8)
 c1.metric("Entrantes",       f"{n_ent:,}")
 c2.metric("Atendidas",       f"{n_ent_at:,}",  f"{pct_at}%")
@@ -726,8 +728,8 @@ c3.metric("Perdidas",        f"{n_ent_per:,}", f"-{100-pct_at}%")
 c4.metric("% Atención",      f"{pct_at}%")
 c5.metric("Salientes",       f"{n_sal:,}")
 c6.metric("Sal. conectadas", f"{n_sal_ok:,}")
-c7.metric("Dur. prom.",      fmt_dur(avg_dur_ent))
-c8.metric("Espera prom.",    fmt_dur(avg_esp))
+c7.metric("Dur. prom.",      fmt_dur(_avg_dur))
+c8.metric("Espera prom.",    fmt_dur(_avg_esp))
 st.markdown("<br>", unsafe_allow_html=True)
 
 tabs = st.tabs(["VISIÓN GENERAL","ENTRANTES","SALIENTES","AGENTES","TURNOS","SEGUIMIENTO","CLIENTES","REGISTROS"])
