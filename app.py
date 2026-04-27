@@ -488,24 +488,78 @@ if live_mode:
     llamadas_activas = []
 
     if df_live is not None and not df_live.empty:
-        for _, row in df_live.iterrows():
-            dur  = int(row.get("duration",  0) or 0)
-            ring = int(row.get("ring_time", 0) or 0)
-            dnis_user = str(row.get("dnis_user","") or "")
-            ani_user  = str(row.get("ani_user", "") or "")
-            ag_id = dnis_user if dnis_user not in ("", CENTRAL_ID) else \
-                    (ani_user  if ani_user  not in ("", CENTRAL_ID) else "")
-            disconnect = row.get("disconnect_time")
-            activa = disconnect is None or str(disconnect).strip() in ("","None","null")
-            if not activa: continue
-            estado = "en_llamada" if dur > 0 else ("timbrando" if ring > 0 else "conectando")
+        df_lv = df_live.copy()
+        for col in ["dnis_user","ani_user","original_callid","ref_callid","ani","dnis","connect_time","disconnect_time"]:
+            if col in df_lv.columns:
+                df_lv[col] = df_lv[col].astype(str).str.strip().replace({"None":"","nan":"","null":"","<NA>":""})
+
+        agentes_reales = set(AGENTES_SIN_CENTRAL.keys())
+        df_lv_trn = df_lv[df_lv["dnis_user"] == CENTRAL_ID]
+        df_lv_ag  = df_lv[df_lv["dnis_user"].isin(agentes_reales)]
+
+        # Construir lookup agente por original_callid
+        ag_by_orig = {}
+        for _, row in df_lv_ag.iterrows():
+            orig = row.get("original_callid","")
+            if orig and orig not in ag_by_orig:
+                ag_by_orig[orig] = row
+            elif orig:
+                # Si ya existe, quedarse con el que tiene más duración
+                existing = ag_by_orig[orig]
+                if int(row.get("duration",0) or 0) > int(existing.get("duration",0) or 0):
+                    ag_by_orig[orig] = row
+
+        # Iterar troncos activos → cada uno representa una llamada
+        troncos_procesados = set()
+        for _, trn in df_lv_trn.iterrows():
+            disc = str(trn.get("disconnect_time","") or "")
+            if disc not in ("","None","null","nan"): continue  # ya terminó
+
+            ref_cid = str(trn.get("ref_callid","") or "")
+            trn_orig = str(trn.get("original_callid","") or "")
+            if trn_orig in troncos_procesados: continue
+            troncos_procesados.add(trn_orig)
+
+            ani_cliente  = str(trn.get("ani","-") or "-")
+            dnis_marcado = str(trn.get("dnis","-") or "-")
+            trn_dur      = int(trn.get("duration", 0) or 0)
+            trn_ct       = str(trn.get("connect_time","") or "")
+
+            ag_row = ag_by_orig.get(ref_cid)
+            if ag_row is not None:
+                ag_id     = str(ag_row.get("dnis_user",""))
+                ag_dur    = int(ag_row.get("duration", 0) or 0)
+                ag_ct     = str(ag_row.get("connect_time","") or "")
+                ag_ring   = max(0, int(ag_row.get("ring_time", 0) or 0))  # ignorar negativos
+
+                connected = ag_ct not in ("","None","null","nan")
+                if connected and ag_dur > 0:
+                    estado = "en_llamada"
+                    duracion = ag_dur
+                    connect_time = ag_ct
+                else:
+                    estado = "timbrando"
+                    duracion = 0
+                    connect_time = ""
+                agente_conocido = True
+            else:
+                # Tronco sin agente asignado aún
+                ag_id = ""; ag_ring = 0
+                estado = "conectando"
+                duracion = trn_dur
+                connect_time = trn_ct
+                agente_conocido = False
+
             llamadas_activas.append({
-                "ag_id": ag_id, "agente": AGENTES.get(ag_id,"Por identificar") if ag_id else "Por identificar",
-                "numero_cliente": str(row.get("ani","-") or "-"),
-                "dnis_marcado":   str(row.get("dnis","-") or "-"),
-                "duracion": dur, "ring_time": ring, "estado": estado,
-                "connect_time": str(row.get("connect_time","") or ""),
-                "agente_conocido": bool(ag_id and ag_id != CENTRAL_ID),
+                "ag_id":          ag_id,
+                "agente":         AGENTES.get(ag_id, "Por identificar") if ag_id else "Por identificar",
+                "numero_cliente": ani_cliente,
+                "dnis_marcado":   dnis_marcado,
+                "duracion":       duracion,
+                "ring_time":      ag_ring,
+                "estado":         estado,
+                "connect_time":   connect_time,
+                "agente_conocido": agente_conocido,
             })
 
     ag_ocupados  = {c["ag_id"] for c in llamadas_activas if c["ag_id"]}
