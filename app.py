@@ -181,74 +181,44 @@ def fetch_cdrs(date_start=None, date_end=None, recent=False, live=False, progres
 # ── Clasificación de llamadas entrantes ────────────────────────────────────────
 def clasificar_entrantes(df_inc):
     """
-    Agrupa registros por original_callid y determina el escenario real de cada llamada.
-    Cada llamada genera 2 registros: tronco (Central Virtual) + agente.
-    Esta función los consolida en 1 registro por llamada con escenario detallado.
+    Consolida los 2 registros por llamada (tronco + agente) en 1 solo registro.
+
+    Estructura real de CallMyWay:
+      - Registro tronco: dnis_user=CENTRAL_ID, ref_callid=X  (X = original_callid del agente)
+      - Registro agente: dnis_user=agent_id,  original_callid=X
+
+    La clave de unión es: trunk.ref_callid == agent.original_callid
     """
     if df_inc is None or df_inc.empty: return pd.DataFrame()
     agentes_reales = set(AGENTES_SIN_CENTRAL.keys())
+
+    df_inc = df_inc.copy()
+    for col in ["dnis_user","ani_user","original_callid","ref_callid","ani","dnis"]:
+        if col in df_inc.columns:
+            df_inc[col] = df_inc[col].astype(str).str.strip().replace({"None":"","nan":"","null":"","<NA>":""})
+
+    df_trn = df_inc[df_inc["dnis_user"] == CENTRAL_ID].copy()
+    df_ag  = df_inc[df_inc["dnis_user"].isin(agentes_reales)].copy()
+
+    # lookup: ref_callid del tronco → fila tronco (para ANI cliente y detect_time)
+    trn_by_ref = {}
+    for _, row in df_trn.iterrows():
+        ref = str(row.get("ref_callid","")).strip()
+        if ref: trn_by_ref[ref] = row
+
+    # set de original_callids de registros agente (para filtrar troncos ya procesados)
+    ag_orig_set = set(df_ag["original_callid"].unique()) if not df_ag.empty else set()
+
     resultados = []
 
-    for orig_cid, grupo in df_inc.groupby("original_callid"):
-        reg_ag  = grupo[grupo["dnis_user"].isin(agentes_reales)]
-        reg_trn = grupo[grupo["dnis_user"] == CENTRAL_ID]
-
-        detect_time = grupo["detect_time"].min()
-        # Número del cliente siempre viene del ANI del registro tronco
-        ani_src = reg_trn["ani"].dropna() if not reg_trn.empty else grupo["ani"].dropna()
-        ani_cliente = str(ani_src.iloc[0]) if not ani_src.empty else "—"
-        ring_total = int(reg_ag["ring_time"].sum()) if not reg_ag.empty else 0
-
-        if reg_ag.empty:
-            # ── LLAMADA QUE NO LLEGÓ A NINGÚN AGENTE ──────────────────────────
-            er_vals = reg_trn["end_reason"].dropna() if not reg_trn.empty else grupo["end_reason"].dropna()
-            top_er  = er_vals.mode().iloc[0] if not er_vals.empty else "UNKNOWN"
-            if top_er == "CANCELLED":
-                escenario = "colgó_en_ivr"       # usuario colgó antes de ser enrutado
-            elif top_er in ("TEMPORARILY_UNAVAILABLE", "NOT_FOUND", "SERVICE_UNAVAILABLE"):
-                escenario = "agente_no_disponible" # central no encontró agente libre
-            else:
-                escenario = "no_enrutada"          # otro motivo técnico
-            atendida, agente_id, duracion, n_intentos, end_reason = False, None, 0, 0, top_er
-        else:
-            # ── LLAMADA QUE LLEGÓ A AL MENOS UN AGENTE ────────────────────────
-            n_intentos = len(reg_ag)              # cuántos intentos de ring al agente
-            contestado = reg_ag[reg_ag["duration"] > 0]
-
-            if not contestado.empty:
-                # ✅ Atendida
-                best       = contestado.loc[contestado["duration"].idxmax()]
-                agente_id  = str(best["dnis_user"])
-                duracion   = int(best["duration"])
-                end_reason = str(best.get("end_reason","OK") or "OK")
-                atendida   = True
-                escenario  = "atendida"
-            else:
-                # ❌ No atendida — determinar razón
-                atendida  = False
-                agente_id = None
-                duracion  = 0
-                ers       = reg_ag["end_reason"].dropna()
-                top_er    = ers.mode().iloc[0] if not ers.empty else "UNKNOWN"
-                end_reason = top_er
-
-                if top_er == "CANCELLED":
-                    escenario = "colgó_timbrando"        # usuario colgó mientras timbraba al agente
-                elif top_er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE"):
-                    escenario = "agente_no_disponible"   # agente ocupado / no disponible
-                elif top_er == "NO_ANSWER":
-                    escenario = "múltiples_no_respuesta" if n_intentos > 1 else "no_respondió"
-                elif top_er == "DECLINE":
-                    escenario = "rechazada"
-                else:
-                    escenario = "perdida"
-
+    def _append(orig_cid, detect_time, ani_cliente, atendida, agente_id,
+                duracion, ring_total, n_intentos, end_reason, escenario):
         resultados.append({
             "original_callid": orig_cid,
             "detect_time":    detect_time,
             "numero_cliente": ani_cliente,
             "atendida":       atendida,
-            "agente":         AGENTES.get(agente_id, "Sin atender") if agente_id else "Sin atender",
+            "agente":         AGENTES.get(str(agente_id),"Sin atender") if agente_id else "Sin atender",
             "agente_id":      agente_id,
             "duracion":       duracion,
             "espera_total":   ring_total,
@@ -261,14 +231,67 @@ def clasificar_entrantes(df_inc):
             "fecha":          detect_time.date() if pd.notna(detect_time) else None,
         })
 
+    # ── 1. Llamadas que llegaron a al menos un agente ─────────────────────────
+    for orig_cid, ag_grp in (df_ag.groupby("original_callid") if not df_ag.empty else []):
+        # ANI cliente: viene del tronco cuyo ref_callid == orig_cid
+        trunk = trn_by_ref.get(orig_cid)
+        if trunk is not None:
+            ani_cliente = str(trunk.get("ani","—") or "—")
+            detect_time = min(trunk.get("detect_time"), ag_grp["detect_time"].min())
+        else:
+            ani_val = ag_grp["ani"].replace("",pd.NA).dropna()
+            ani_cliente = str(ani_val.iloc[0]) if not ani_val.empty else "—"
+            detect_time = ag_grp["detect_time"].min()
+
+        ring_total = int(ag_grp["ring_time"].sum())
+        n_intentos = len(ag_grp)
+        contestado = ag_grp[ag_grp["duration"] > 0]
+
+        if not contestado.empty:
+            best       = contestado.loc[contestado["duration"].idxmax()]
+            agente_id  = str(best["dnis_user"])
+            duracion   = int(best["duration"])
+            end_reason = str(best.get("end_reason","OK") or "OK")
+            _append(orig_cid, detect_time, ani_cliente, True, agente_id, duracion, ring_total, n_intentos, end_reason, "atendida")
+        else:
+            ers    = ag_grp["end_reason"].replace("",pd.NA).dropna()
+            top_er = ers.mode().iloc[0] if not ers.empty else "UNKNOWN"
+            if top_er == "CANCELLED":
+                esc = "colgó_timbrando"
+            elif top_er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE"):
+                esc = "agente_no_disponible"
+            elif top_er == "NO_ANSWER":
+                esc = "múltiples_no_respuesta" if n_intentos > 1 else "no_respondió"
+            elif top_er == "DECLINE":
+                esc = "rechazada"
+            else:
+                esc = "perdida"
+            _append(orig_cid, detect_time, ani_cliente, False, None, 0, ring_total, n_intentos, top_er, esc)
+
+    # ── 2. Llamadas que SOLO llegaron a la central (nunca se enrutaron a agente) ─
+    for _, trn_row in (df_trn.iterrows() if not df_trn.empty else []):
+        ref_cid = str(trn_row.get("ref_callid","")).strip()
+        # Si el ref_callid ya fue procesado como orig_cid de agente → SKIP (duplicado)
+        if ref_cid in ag_orig_set:
+            continue
+        orig_cid    = str(trn_row.get("original_callid","")).strip()
+        detect_time = trn_row.get("detect_time")
+        ani_cliente = str(trn_row.get("ani","—") or "—")
+        er          = str(trn_row.get("end_reason","UNKNOWN") or "UNKNOWN")
+        if er == "CANCELLED":
+            esc = "colgó_en_ivr"
+        elif er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE"):
+            esc = "agente_no_disponible"
+        else:
+            esc = "no_enrutada"
+        _append(orig_cid, detect_time, ani_cliente, False, None, 0, 0, 0, er, esc)
+
     if not resultados: return pd.DataFrame()
     df = pd.DataFrame(resultados)
     df["agente_turno"] = df["detect_time"].apply(agente_de_turno)
-
     def calc_resp(r):
         if r["agente_turno"] in AGENTES_SIN_ID: return r["agente_turno"]
         return r["agente"] if r["atendida"] else r["agente_turno"]
-
     df["responsable"] = df.apply(calc_resp, axis=1)
     df.loc[df["agente_turno"].isin(AGENTES_SIN_ID), ["atendida","agente"]] = [False, "Sin atender"]
     return df
