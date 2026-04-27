@@ -228,7 +228,8 @@ def clasificar_entrantes(df_inc):
             best = contestado.loc[contestado["duration"].idxmax()]
             _append(orig_cid,detect_time,ani_cliente,True,str(best["dnis_user"]),
                     int(best["duration"]),ring_total,n_intentos,
-                    str(best.get("end_reason","OK") or "OK"),"atendida")
+                    str(best.get("end_reason","OK") or "OK"),"atendida",
+                    agente_timbrando=None, espera_usuario=0)
         else:
             ers = ag_grp["end_reason"].replace("",pd.NA).dropna()
             top_er = ers.mode().iloc[0] if not ers.empty else "UNKNOWN"
@@ -237,7 +238,16 @@ def clasificar_entrantes(df_inc):
             elif top_er == "NO_ANSWER": esc = "múltiples_no_respuesta" if n_intentos>1 else "no_respondió"
             elif top_er == "DECLINE": esc = "rechazada"
             else: esc = "perdida"
-            _append(orig_cid,detect_time,ani_cliente,False,None,0,ring_total,n_intentos,top_er,esc)
+            # Para colgó_timbrando: capturar qué agente estaba timbrando
+            ag_timbrando = None
+            if esc == "colgó_timbrando":
+                # El agente que estaba timbrando cuando el usuario colgó
+                ringing = ag_grp.sort_values("detect_time", ascending=False)
+                ag_timbrando = str(ringing.iloc[0]["dnis_user"]) if not ringing.empty else None
+            # Tiempo que esperó el usuario = ring_time acumulado
+            espera_u = ring_total
+            _append(orig_cid,detect_time,ani_cliente,False,None,0,ring_total,n_intentos,top_er,esc,
+                    agente_timbrando=ag_timbrando, espera_usuario=espera_u)
 
     for _,trn_row in (df_trn.iterrows() if not df_trn.empty else []):
         ref_cid = str(trn_row.get("ref_callid","")).strip()
