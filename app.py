@@ -289,6 +289,22 @@ def procesar(df_raw):
     for col in ["ani_user","dnis_user","ref_callid","original_callid"]:
         if col in df.columns: df[col] = df[col].astype(str).str.strip()
 
+    # ── Inferir tipo cuando type es null ──────────────────────────────────────
+    # Entrante: dnis_user es CENTRAL_ID o un agente real
+    # Saliente: ani_user es un agente real y dnis_user NO es agente ni central
+    todos_agentes = set(AGENTES.keys())
+    if "type" not in df.columns:
+        df["type"] = None
+    df["type"] = df["type"].astype(str).replace({"None":"","nan":"","null":"","<NA>":""})
+    mask_tipo_nulo = df["type"] == ""
+    if mask_tipo_nulo.any():
+        df.loc[mask_tipo_nulo & df["dnis_user"].isin(todos_agentes), "type"] = "incoming"
+        df.loc[mask_tipo_nulo & df["ani_user"].isin(AGENTES_SIN_CENTRAL.keys()) &
+               ~df["dnis_user"].isin(todos_agentes), "type"] = "outgoing"
+        # Los que siguen sin tipo y dnis_user es central → incoming
+        mask_tipo_nulo2 = df["type"] == ""
+        df.loc[mask_tipo_nulo2, "type"] = "incoming"
+
     mask_sal = (
         (df["type"]=="outgoing") &
         (df["ani_user"].isin(AGENTES_SIN_CENTRAL.keys())) &
@@ -433,14 +449,18 @@ if live_mode:
     _ahora = now_lima()
     _hace5 = (_ahora - timedelta(minutes=6)).strftime("%Y-%m-%d %H:%M:%S")
     _hasta = _ahora.strftime("%Y-%m-%d %H:%M:%S")
+    _debug_info = ""
     try:
-        _df_rec, _ = fetch_cdrs(date_start=_hace5, date_end=_hasta)
+        _df_rec, _err_rec = fetch_cdrs(date_start=_hace5, date_end=_hasta)
         if _df_rec is not None and not _df_rec.empty:
             _df_rec_proc, _df_sal_rec, _ = procesar(_df_rec)
+            _debug_info = f"CDRs últimos 6 min: {len(_df_rec)} registros · {len(_df_rec_proc)} entrantes clasificadas"
         else:
             _df_rec_proc, _df_sal_rec = pd.DataFrame(), pd.DataFrame()
-    except:
+            _debug_info = f"Sin CDRs en últimos 6 min · {_err_rec or 'respuesta vacía'}"
+    except Exception as _ex:
         _df_rec_proc, _df_sal_rec = pd.DataFrame(), pd.DataFrame()
+        _debug_info = f"Error al consultar CDRs: {_ex}"
 
     _notif_js = []  # mensajes para browser notification
 
@@ -624,6 +644,7 @@ if live_mode:
     kc2.metric("En conversación", n_conectadas)
     kc3.metric("Timbrando",       n_timbrando)
     kc4.metric("Agentes libres",  n_libres)
+    st.caption(f"🔍 {_debug_info}")
     st.markdown("<br>",unsafe_allow_html=True)
     st.markdown("#### 👥 Estado de agentes")
     cols_ag = st.columns(3)
