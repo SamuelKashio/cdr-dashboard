@@ -687,23 +687,19 @@ n_ent_per   = n_ent - n_ent_at
 pct_at      = round(n_ent_at/n_ent*100)         if n_ent else 0
 n_sal       = len(df_sal)
 n_sal_ok    = int((df_sal["atendida"]==True).sum()) if not df_sal.empty else 0
-avg_dur_ent, avg_esp = 0, 0
-dur_ent = pd.Series(dtype=float)
-esp     = pd.Series(dtype=float)
-try:
-    if not df_ent.empty and "duracion" in df_ent.columns and "atendida" in df_ent.columns:
-        dur_ent = df_ent[df_ent["atendida"]==True]["duracion"].dropna()
-        if len(dur_ent) > 0:
-            m = dur_ent.mean()
-            avg_dur_ent = 0 if pd.isna(m) else int(m)
-except Exception: pass
-try:
-    if not df_ent.empty and "espera_total" in df_ent.columns and "atendida" in df_ent.columns:
-        esp = df_ent[df_ent["atendida"]==True]["espera_total"].dropna()
-        if len(esp) > 0:
-            m = esp.mean()
-            avg_esp = 0 if pd.isna(m) else int(m)
-except Exception: pass
+def _safe_avg(df, col):
+    try:
+        if df.empty or col not in df.columns or "atendida" not in df.columns:
+            return 0
+        s = df[df["atendida"] == True][col].dropna()
+        if len(s) == 0: return 0
+        m = s.mean()
+        return 0 if (m != m) else int(m)  # NaN check sin pd.isna
+    except Exception:
+        return 0
+
+_avg_dur = _safe_avg(df_ent, "duracion")
+_avg_esp = _safe_avg(df_ent, "espera_total")
 
 P = dict(paper_bgcolor="#06080F", plot_bgcolor="#06080F",
          font=dict(color="#2A4060",family="Outfit"), margin=dict(t=10,b=30,l=5,r=5))
@@ -719,6 +715,8 @@ st.markdown(f"""
   <div style='font-size:11px;color:#0F2030;font-family:JetBrains Mono,monospace'>{_U} · CallMyWay</div>
 </div>""", unsafe_allow_html=True)
 
+_avg_dur = locals().get("avg_dur_ent", 0) or 0
+_avg_esp = locals().get("avg_esp",     0) or 0
 _avg_dur = locals().get("avg_dur_ent", 0) or 0
 _avg_esp = locals().get("avg_esp",     0) or 0
 c1,c2,c3,c4,c5,c6,c7,c8 = st.columns(8)
