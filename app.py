@@ -92,6 +92,9 @@ if "cfg_loaded" not in st.session_state:
     st.session_state.cfg_modo_demo      = _md
     st.session_state.cfg_loaded         = True
 
+if "show_config" not in st.session_state:
+    st.session_state.show_config = False
+
 # ── Accesores de configuración activa ─────────────────────────────────────────
 def get_agentes():
     return {k: v["nombre"] for k, v in st.session_state.cfg_agentes.items()}
