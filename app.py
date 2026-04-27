@@ -340,10 +340,6 @@ def calcular_cumplimiento(df_ent, df_sal):
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 hoy_lima = now_lima()
 
-# Inicializar session state para fechas
-if "fi" not in st.session_state: st.session_state.fi = (hoy_lima - timedelta(days=1)).date()
-if "ff" not in st.session_state: st.session_state.ff = hoy_lima.date()
-
 with st.sidebar:
     st.markdown("## 🎯 Supervisor · Soporte")
     st.markdown(f"""<div style='background:#0C0F1C;border:1px solid rgba(80,120,200,.15);border-radius:8px;
@@ -352,10 +348,10 @@ with st.sidebar:
         <div style='color:#4A7ABA;font-size:13px;font-family:JetBrains Mono,monospace;margin-top:2px'>{_U}</div>
         </div>""", unsafe_allow_html=True)
     st.markdown("---")
-    fi = st.date_input("Desde",      value=st.session_state.fi, key="fi")
-    hi = st.time_input("Hora inicio", value=datetime.strptime("00:00","%H:%M").time())
-    ff = st.date_input("Hasta",       value=st.session_state.ff, key="ff")
-    hf = st.time_input("Hora fin",    value=datetime.strptime("23:59","%H:%M").time())
+    fi = st.date_input("Desde",       value=(hoy_lima-timedelta(days=1)).date())
+    hi = st.time_input("Hora inicio",  value=datetime.strptime("00:00","%H:%M").time())
+    ff = st.date_input("Hasta",        value=hoy_lima.date())
+    hf = st.time_input("Hora fin",     value=datetime.strptime("23:59","%H:%M").time())
     st.markdown("---")
     c1,c2 = st.columns(2)
     with c1: btn_ok  = st.button("⟳ Consultar",type="primary",use_container_width=True)
@@ -384,16 +380,12 @@ if live_mode:
     cargar_live(df_raw_live,f"EN VIVO · {hoy_lima.strftime('%H:%M:%S')}")
 
 elif btn_hoy:
-    # Forzar fechas a hoy en session state
-    st.session_state.fi = hoy_lima.date()
-    st.session_state.ff = hoy_lima.date()
     ds = hoy_lima.replace(hour=0,minute=0,second=0,microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
     de = hoy_lima.strftime("%Y-%m-%d %H:%M:%S")
     with st.spinner("Consultando hoy..."):
         df_raw_h,err = fetch_cdrs(date_start=ds,date_end=de)
     if err: st.session_state.error = err
     else:   cargar(df_raw_h,f"Hoy {hoy_lima.strftime('%d/%m/%Y')} · desde las 00:00")
-    st.rerun()
 
 elif btn_ok:
     ds = datetime.combine(fi,hi).strftime("%Y-%m-%d %H:%M:%S")
