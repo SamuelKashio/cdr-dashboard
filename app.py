@@ -687,10 +687,16 @@ n_ent_per   = n_ent - n_ent_at
 pct_at      = round(n_ent_at/n_ent*100)         if n_ent else 0
 n_sal       = len(df_sal)
 n_sal_ok    = int((df_sal["atendida"]==True).sum()) if not df_sal.empty else 0
-dur_ent     = df_ent[df_ent["atendida"]==True]["duracion"].dropna() if not df_ent.empty else pd.Series(dtype=int)
-avg_dur_ent = int(dur_ent.mean()) if len(dur_ent) else 0
-esp         = df_ent[df_ent["atendida"]==True]["espera_total"].dropna() if not df_ent.empty and "espera_total" in df_ent.columns else pd.Series(dtype=int)
-avg_esp     = int(esp.mean()) if len(esp) else 0
+try:
+    dur_ent = df_ent[df_ent["atendida"]==True]["duracion"].dropna() if not df_ent.empty and "duracion" in df_ent.columns else pd.Series(dtype=float)
+    avg_dur_ent = int(dur_ent.mean()) if len(dur_ent) > 0 and not pd.isna(dur_ent.mean()) else 0
+except Exception:
+    dur_ent, avg_dur_ent = pd.Series(dtype=float), 0
+try:
+    esp     = df_ent[df_ent["atendida"]==True]["espera_total"].dropna() if not df_ent.empty and "espera_total" in df_ent.columns else pd.Series(dtype=float)
+    avg_esp = int(esp.mean()) if len(esp) > 0 and not pd.isna(esp.mean()) else 0
+except Exception:
+    esp, avg_esp = pd.Series(dtype=float), 0
 
 P = dict(paper_bgcolor="#06080F", plot_bgcolor="#06080F",
          font=dict(color="#2A4060",family="Outfit"), margin=dict(t=10,b=30,l=5,r=5))
