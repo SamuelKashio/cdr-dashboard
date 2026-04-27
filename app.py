@@ -95,6 +95,9 @@ if "cfg_loaded" not in st.session_state:
 if "show_config" not in st.session_state:
     st.session_state.show_config = False
 
+if "auto_loaded" not in st.session_state:
+    st.session_state.auto_loaded = False
+
 # ── Accesores de configuración activa ─────────────────────────────────────────
 def get_agentes():
     return {k: v["nombre"] for k, v in st.session_state.cfg_agentes.items()}
@@ -650,13 +653,15 @@ if live_mode:
     df_raw_live,err = fetch_cdrs(live=True)
     if err: st.error(f"⚠ {err}"); st.stop()
     cargar_live(df_raw_live,f"EN VIVO · {hoy_lima.strftime('%H:%M:%S')}")
-elif btn_hoy:
+elif btn_hoy or (not st.session_state.loaded and not st.session_state.auto_loaded):
     ds = hoy_lima.replace(hour=0,minute=0,second=0,microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
     de = hoy_lima.strftime("%Y-%m-%d %H:%M:%S")
-    with st.spinner("Consultando hoy..."):
+    with st.spinner("Cargando datos de hoy..."):
         df_raw_h,err = fetch_cdrs(date_start=ds,date_end=de)
     if err: st.session_state.error = err
-    else:   cargar(df_raw_h,f"Hoy {hoy_lima.strftime('%d/%m/%Y')} · desde las 00:00")
+    else:
+        cargar(df_raw_h,f"Hoy {hoy_lima.strftime('%d/%m/%Y')} · desde las 00:00")
+        st.session_state.auto_loaded = True
 elif btn_ok:
     ds = datetime.combine(fi,hi).strftime("%Y-%m-%d %H:%M:%S")
     de = datetime.combine(ff,hf).strftime("%Y-%m-%d %H:%M:%S")
