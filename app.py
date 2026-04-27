@@ -758,10 +758,14 @@ if live_mode:
     st.caption(f"🔍 {_debug_info}")
 
     if st.session_state.notif_sin_devolver:
+        def _seg_pend(_v):
+            t = _v.get("t")
+            if t is None or not pd.notna(t): return 0
+            return (_ahora - pd.Timestamp(t)).total_seconds()
         _pend = sorted(
-            [(_ahora-pd.Timestamp(_v["t"])).total_seconds() if _v.get("t") is not None and pd.notna(_v.get("t")) else 0, _v, _k]
-            for _k,_v in st.session_state.notif_sin_devolver.items()
-        , reverse=True)
+            [(_seg_pend(_v), _v, _k) for _k,_v in st.session_state.notif_sin_devolver.items()],
+            reverse=True
+        )
         st.markdown(f"""<div style='background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);
             border-radius:10px;padding:14px 18px;margin-bottom:16px'>
           <div style='color:#EF4444;font-size:13px;font-weight:600;margin-bottom:10px'>
