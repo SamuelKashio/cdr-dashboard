@@ -318,6 +318,7 @@ def calcular_cumplimiento(df_ent, df_sal):
     Retorna DataFrame con el detalle de cada llamada perdida y su resolución.
     """
     if df_ent is None or df_ent.empty: return pd.DataFrame()
+    if "escenario" not in df_ent.columns: return pd.DataFrame()
 
     # Solo escenarios donde hay responsabilidad del agente
     esc_responsable = {"no_respondió","múltiples_no_respuesta","agente_no_disponible","rechazada","colgó_timbrando","perdida"}
