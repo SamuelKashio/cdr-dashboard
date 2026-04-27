@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import time
 import json
+import os
 
 # ── Zona horaria Lima ──────────────────────────────────────────────────────────
 TZ = ZoneInfo("America/Lima")
