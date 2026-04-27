@@ -198,12 +198,16 @@ def clasificar_entrantes(df_inc):
     resultados = []
 
     def _append(orig_cid,detect_time,ani_cliente,atendida,agente_id,
-                duracion,ring_total,n_intentos,end_reason,escenario):
+                duracion,ring_total,n_intentos,end_reason,escenario,
+                agente_timbrando=None,espera_usuario=0):
         resultados.append({
             "original_callid":orig_cid,"detect_time":detect_time,
             "numero_cliente":ani_cliente,"atendida":atendida,
             "agente":AGENTES.get(str(agente_id),"Sin atender") if agente_id else "Sin atender",
-            "agente_id":agente_id,"duracion":duracion,"espera_total":ring_total,
+            "agente_id":agente_id,
+            "agente_timbrando":AGENTES.get(str(agente_timbrando),"—") if agente_timbrando else "—",
+            "espera_usuario":max(0,int(espera_usuario or 0)),
+            "duracion":duracion,"espera_total":ring_total,
             "n_intentos":n_intentos,"end_reason":end_reason,
             "end_reason_es":END_REASONS.get(end_reason,end_reason),
             "escenario":escenario,"escenario_es":esc_es(escenario),
@@ -259,7 +263,8 @@ def clasificar_entrantes(df_inc):
         esc = "colgó_en_ivr" if er=="CANCELLED" else \
               "agente_no_disponible" if er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE") else \
               "no_enrutada"
-        _append(orig_cid,detect_time,ani_cliente,False,None,0,0,0,er,esc)
+        _append(orig_cid,detect_time,ani_cliente,False,None,0,0,0,er,esc,
+                agente_timbrando=None, espera_usuario=0)
 
     if not resultados: return pd.DataFrame()
     df = pd.DataFrame(resultados)
@@ -689,14 +694,16 @@ with tab_ent:
         elif f_est=="Perdidas": dv=dv[dv["atendida"]==False]
         if f_esc!="Todos" and "escenario_es" in dv.columns: dv=dv[dv["escenario_es"]==f_esc]
         if f_ag!="Todos": dv=dv[dv["agente"]==f_ag]
-        cols_t=[c for c in ["detect_time","numero_cliente","escenario_es","agente","responsable",
-                             "agente_turno","duracion","espera_total","n_intentos"] if c in dv.columns]
+        cols_t=[c for c in ["detect_time","numero_cliente","escenario_es","agente",
+                             "agente_timbrando","espera_usuario",
+                             "responsable","agente_turno","duracion","espera_total","n_intentos"] if c in dv.columns]
         ds=dv[cols_t].copy()
-        for col,fn in [("duracion",fmt_dur),("espera_total",fmt_dur)]:
+        for col,fn in [("duracion",fmt_dur),("espera_total",fmt_dur),("espera_usuario",fmt_dur)]:
             if col in ds.columns: ds[col]=ds[col].apply(fn)
         ds=ds.rename(columns={"detect_time":"Fecha/Hora","numero_cliente":"Número","escenario_es":"Escenario",
-            "agente":"Contestó","responsable":"Responsable","agente_turno":"Turno",
-            "duracion":"Duración","espera_total":"Espera","n_intentos":"Intentos"})
+            "agente":"Contestó","agente_timbrando":"Timbraba a","espera_usuario":"Esperó",
+            "responsable":"Responsable","agente_turno":"Turno",
+            "duracion":"Duración","espera_total":"Ring total","n_intentos":"Intentos"})
         st.caption(f"{len(dv):,} llamadas mostradas")
         st.dataframe(ds,use_container_width=True,height=460,hide_index=True)
         ec1,ec2=st.columns(2)
