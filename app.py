@@ -76,45 +76,61 @@ T = {
         "tab":"#2A4060","tab_sel":"#5A9AEA","tab_sel_border":"#3A7ACA",
     },
     "light":{
-        "bg":"#F1F5F9","sidebar":"#FFFFFF","card":"#FFFFFF","card2":"#F8FAFC",
-        "border":"rgba(0,0,0,.09)","border2":"rgba(0,0,0,.06)",
-        "text":"#1E293B","muted":"#475569","muted2":"#64748B","muted3":"#94A3B8",
-        "primary":"#6366F1","primary_dim":"#EEF2FF","primary_border":"rgba(99,102,241,.3)",
-        "green":"#16A34A","green_dim":"#DCFCE7","green_border":"rgba(22,163,74,.2)",
-        "red":"#DC2626","red_dim":"#FEE2E2","red_border":"rgba(220,38,38,.2)",
-        "yellow":"#D97706","yellow_dim":"#FEF3C7",
-        "plot_bg":"#FFFFFF","grid":"rgba(0,0,0,.07)",
+        "bg":"#F0F4F8","sidebar":"#FFFFFF","card":"#FFFFFF","card2":"#F8FAFC",
+        "border":"rgba(0,0,0,.12)","border2":"rgba(0,0,0,.08)",
+        "text":"#0F172A","muted":"#334155","muted2":"#475569","muted3":"#64748B",
+        "primary":"#4F46E5","primary_dim":"#EEF2FF","primary_border":"rgba(79,70,229,.3)",
+        "green":"#16A34A","green_dim":"#14532D","green_border":"rgba(22,163,74,.25)",
+        "red":"#DC2626","red_dim":"#7F1D1D","red_border":"rgba(220,38,38,.22)",
+        "yellow":"#B45309","yellow_dim":"#78350F",
+        "plot_bg":"#FFFFFF","grid":"rgba(0,0,0,.09)",
         "bar_green":"#16A34A","bar_red":"#DC2626","bar_blue":"#2563EB","bar_dark":"#7C3AED",
         "input_bg":"#F8FAFC","scrollbar":"#CBD5E1",
-        "tab":"#94A3B8","tab_sel":"#6366F1","tab_sel_border":"#6366F1",
+        "tab":"#64748B","tab_sel":"#4F46E5","tab_sel_border":"#4F46E5",
     },
 }
 
 def get_css(c):
+    is_light = c["bg"] != "#06080F"
+    sidebar_text = c["muted"] if not is_light else c["text"]
+    sidebar_label = c["muted2"] if not is_light else c["muted2"]
+    df_bg = c["card"]
+    df_text = c["text"]
     return f"""<style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 html,body,[class*="css"]{{font-family:'Outfit',sans-serif!important}}
 .stApp{{background:{c['bg']}!important}}.stApp>header{{background:transparent!important}}
 section[data-testid="stSidebar"]{{background:{c['sidebar']}!important;border-right:1px solid {c['border']}!important}}
-section[data-testid="stSidebar"] *{{color:{c['muted']}!important}}
+section[data-testid="stSidebar"] *{{color:{sidebar_text}!important}}
 section[data-testid="stSidebar"] h1,section[data-testid="stSidebar"] strong{{color:{c['text']}!important}}
-section[data-testid="stSidebar"] label{{color:{c['muted2']}!important;font-size:11px!important;letter-spacing:.5px;text-transform:uppercase}}
+section[data-testid="stSidebar"] label{{color:{sidebar_label}!important;font-size:11px!important;letter-spacing:.5px;text-transform:uppercase}}
 section[data-testid="stSidebar"] input{{background:{c['input_bg']}!important;border:1px solid {c['primary_border']}!important;color:{c['text']}!important;font-family:'JetBrains Mono',monospace!important;font-size:13px!important}}
-section[data-testid="stSidebar"] .stButton button{{width:100%;background:{c['primary_dim']}!important;border:1px solid {c['primary_border']}!important;color:{c['primary']}!important;font-weight:500!important}}
+section[data-testid="stSidebar"] .stButton button{{width:100%;background:{c['primary_dim']}!important;border:1px solid {c['primary_border']}!important;color:{c['primary']}!important;font-weight:600!important}}
 [data-testid="metric-container"]{{background:{c['card']}!important;border:1px solid {c['border']}!important;border-radius:12px!important;padding:16px 18px!important}}
 [data-testid="stMetricLabel"]{{color:{c['muted']}!important;font-size:10px!important;letter-spacing:1.8px!important;text-transform:uppercase!important;font-family:'JetBrains Mono',monospace!important}}
 [data-testid="stMetricValue"]{{color:{c['text']}!important;font-size:26px!important;font-weight:300!important}}
 [data-testid="stMetricDelta"]{{font-size:11px!important}}
 h1,h2,h3{{color:{c['text']}!important;font-family:'Outfit',sans-serif!important}}
-p,li{{color:{c['muted']}!important}}
+h4,h5,h6{{color:{c['text']}!important}}
+p,li,span,div{{color:{c['text']}}}
+.stMarkdown p,.stMarkdown li{{color:{c['muted']}!important}}
+.stCaption *{{color:{c['muted2']}!important}}
 .stTabs [data-baseweb="tab-list"]{{background:transparent!important;gap:2px!important;border-bottom:1px solid {c['border']}!important}}
 .stTabs [data-baseweb="tab"]{{background:transparent!important;color:{c['tab']}!important;font-size:11px!important;font-weight:600!important;letter-spacing:1px!important;text-transform:uppercase!important;padding:10px 18px!important;border-bottom:2px solid transparent!important;border-radius:0!important}}
 .stTabs [aria-selected="true"]{{color:{c['tab_sel']}!important;border-bottom:2px solid {c['tab_sel_border']}!important}}
 .stTabs [data-baseweb="tab-border"]{{display:none!important}}
 .stTabs [data-baseweb="tab-panel"]{{padding-top:22px!important}}
-.stDataFrame{{border:1px solid {c['border']}!important;border-radius:10px!important}}
-.stDataFrame *{{color:{c['text']}!important;background-color:{c['card']}!important}}
-div[data-testid="stDataFrame"] th{{background:{c['card2']}!important;color:{c['muted']}!important}}
+[data-testid="stDataFrame"]{{border:1px solid {c['border']}!important;border-radius:10px!important;overflow:hidden!important}}
+[data-testid="stDataFrame"] *{{color:{df_text}!important}}
+[data-testid="stDataFrame"] th{{background:{c['card2']}!important;color:{c['muted']}!important;font-weight:600!important;border-bottom:1px solid {c['border']}!important}}
+[data-testid="stDataFrame"] td{{background:{c['card']}!important;border-bottom:1px solid {c['border2']}!important}}
+[data-testid="stDataFrame"] tr:hover td{{background:{c['card2']}!important}}
+div[data-testid="stSelectbox"] > div,div[data-testid="stTextInput"] > div > div{{background:{c['input_bg']}!important;border:1px solid {c['border']}!important;color:{c['text']}!important;border-radius:8px!important}}
+div[data-testid="stSelectbox"] *,div[data-testid="stTextInput"] *{{color:{c['text']}!important}}
+.stProgress > div > div{{background:{c['border']}!important}}
+.stProgress > div > div > div{{background:{c['primary']}!important}}
+.stAlert{{background:{c['card']}!important;border:1px solid {c['border']}!important;color:{c['text']}!important}}
+.stAlert *{{color:{c['text']}!important}}
 ::-webkit-scrollbar{{width:4px;height:4px}}::-webkit-scrollbar-track{{background:transparent}}
 ::-webkit-scrollbar-thumb{{background:{c['scrollbar']};border-radius:4px}}
 @keyframes blink{{0%,100%{{opacity:1}}50%{{opacity:.2}}}}
