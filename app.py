@@ -471,9 +471,14 @@ elif btn_ok:
     else:   cargar(df_raw_h, f"{fi.strftime('%d/%m')} – {ff.strftime('%d/%m/%Y')}")
 elif btn_hoy:
     with st.spinner("Consultando..."):
-        df_raw_r, err = fetch_cdrs(recent=True)
+        hoy_inicio = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        hoy_fin    = datetime.now()
+        df_raw_r, err = fetch_cdrs(
+            date_start=hoy_inicio.strftime("%Y-%m-%d %H:%M:%S"),
+            date_end=hoy_fin.strftime("%Y-%m-%d %H:%M:%S")
+        )
     if err: st.session_state.error = err
-    else:   cargar(df_raw_r, "Últimas 24 horas")
+    else:   cargar(df_raw_r, f"Hoy · desde las 00:00")
 
 if st.session_state.error: st.error(f"⚠ {st.session_state.error}"); st.stop()
 if not st.session_state.loaded: st.info("Configura el período y pulsa **Consultar**."); st.stop()
@@ -513,7 +518,13 @@ if live_mode:
         troncos_procesados = set()
         for _, trn in df_lv_trn.iterrows():
             disc = str(trn.get("disconnect_time","") or "")
-            if disc not in ("","None","null","nan"): continue  # ya terminó
+            if disc not in ("","None","null","nan"): continue  # tronco ya terminó
+            # También verificar si el registro agente ya tiene disconnect_time
+            ref_cid_check = str(trn.get("ref_callid","") or "")
+            ag_check = ag_by_orig.get(ref_cid_check)
+            if ag_check is not None:
+                ag_disc = str(ag_check.get("disconnect_time","") or "")
+                if ag_disc not in ("","None","null","nan"): continue  # agente ya colgó
 
             ref_cid = str(trn.get("ref_callid","") or "")
             trn_orig = str(trn.get("original_callid","") or "")
