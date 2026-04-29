@@ -726,7 +726,7 @@ with st.sidebar:
     _did_filtro_global = _did_map_sb.get(st.session_state.canal_sel)
     st.markdown("---")
     with c1s: btn_ok  = st.button("⟳ Consultar", type="primary", use_container_width=True)
-    with c2s: btn_hoy = st.button("Hoy",           use_container_width=True)
+    with c2s: btn_hoy = st.button("Hoy",          use_container_width=True)
     st.markdown("---")
     live_mode = st.toggle("🔴 Modo en vivo", value=False)
     intervalo = st.slider("Refrescar cada (seg)", 5, 60, 15) if live_mode else 15
