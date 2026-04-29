@@ -297,14 +297,14 @@ def clasificar_entrantes(df_inc):
     ag_orig_set=set(df_ag["original_callid"].unique()) if not df_ag.empty else set()
     resultados=[]
     def _append(orig_cid,detect_time,ani_cliente,atendida,agente_id,duracion,ring_total,n_intentos,end_reason,escenario,agente_timbrando=None,espera_usuario=0,dnis_marcado=""):
-        did_info = get_did_info(dnis_marcado, dids_cfg)
+        pais, bandera = _get_did(dnis_marcado)
         resultados.append({"original_callid":orig_cid,"detect_time":detect_time,"numero_cliente":ani_cliente,"atendida":atendida,
             "agente":get_agentes().get(str(agente_id),"Sin atender") if agente_id else "Sin atender","agente_id":agente_id,
             "agente_timbrando":get_agentes().get(str(agente_timbrando),"—") if agente_timbrando else "—",
             "espera_usuario":max(0,int(espera_usuario or 0)),"duracion":duracion,"espera_total":ring_total,
             "n_intentos":n_intentos,"end_reason":end_reason,"end_reason_es":END_REASONS.get(end_reason,end_reason),
             "escenario":escenario,"escenario_es":esc_es(escenario),
-            "dnis_marcado":dnis_marcado,"pais":did_info["pais"],"bandera":did_info["bandera"],
+            "dnis_marcado":dnis_marcado,"pais":pais,"bandera":bandera,
             "hora":detect_time.hour if pd.notna(detect_time) else None,
             "fecha":detect_time.date() if pd.notna(detect_time) else None})
     for orig_cid,ag_grp in (df_ag.groupby("original_callid") if not df_ag.empty else []):
