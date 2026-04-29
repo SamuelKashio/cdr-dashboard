@@ -177,8 +177,26 @@ def get_agentes_con_anexo():   return {k:v["nombre"] for k,v in st.session_state
 def get_turnos():           return [t for t in st.session_state.cfg_turnos if t.get("activo",True)]
 def get_nums_excluidos():   return [] if st.session_state.cfg_modo_demo else list(st.session_state.cfg_nums_excluidos)
 def get_did_info(did):
+    """Busca el DID primero por coincidencia exacta, luego por últimos 9 dígitos."""
     d = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
-    return d.get(str(did),{"pais":"Desconocido","bandera":"🌐"})
+    did_str = str(did).strip()
+    # Exacto
+    if did_str in d: return d[did_str]
+    # Normalizado (últimos 9 dígitos)
+    did_norm = norm_num(did_str)
+    for k, v in d.items():
+        if norm_num(k) == did_norm: return v
+    return {"pais":"Desconocido","bandera":"🌐"}
+
+def canonical_did(did_str):
+    """Devuelve la clave canónica del DID en config, o el valor original si no se encuentra."""
+    d = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
+    s = str(did_str).strip()
+    if s in d: return s
+    s_norm = norm_num(s)
+    for k in d:
+        if norm_num(k) == s_norm: return k
+    return s
 
 # ── Helpers ─────────────────────────────────────────────────────────────────────
 def fmt_dur(s):
@@ -302,8 +320,8 @@ def clasificar_entrantes(df_inc):
 
     def _append(orig_cid,detect_time,ani_cliente,atendida,agente_id,duracion,ring_total,
                 n_intentos,end_reason,escenario,agente_timbrando=None,espera_usuario=0,dnis_marcado=""):
-        dnis_str=str(dnis_marcado).strip() if dnis_marcado else ""
-        di=get_did_info(dnis_str)
+        dnis_str = canonical_did(dnis_marcado) if dnis_marcado else ""
+        di = get_did_info(dnis_str)
         resultados.append({"original_callid":orig_cid,"detect_time":detect_time,
             "numero_cliente":ani_cliente,"atendida":atendida,
             "agente":get_agentes().get(str(agente_id),"Sin atender") if agente_id else "Sin atender",
@@ -352,16 +370,17 @@ def clasificar_entrantes(df_inc):
         orig_cid=str(trn_row.get("original_callid","")).strip()
         detect_time=trn_row.get("detect_time"); ani_cliente=str(trn_row.get("ani","—") or "—")
         dnis_marcado=str(trn_row.get("dnis","") or ""); er=str(trn_row.get("end_reason","UNKNOWN") or "UNKNOWN")
-        if dnis_marcado in usa_dids:
+        dnis_canon = canonical_did(dnis_marcado)  # normalizar antes de comparar
+        if dnis_canon in usa_dids:
             dur=int(trn_row.get("duration",0) or 0); atendida=dur>0
             esc=("atendida" if atendida else "colgó_en_ivr" if er=="CANCELLED" else
                  "agente_no_disponible" if er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE") else "no_enrutada")
             ag_id_usa=next((k for k,v in st.session_state.cfg_agentes.items() if v.get("sin_anexo") and v.get("activo",True)),None)
-            _append(orig_cid,detect_time,ani_cliente,atendida,ag_id_usa,dur,0,1,er,esc,dnis_marcado=dnis_marcado)
+            _append(orig_cid,detect_time,ani_cliente,atendida,ag_id_usa,dur,0,1,er,esc,dnis_marcado=dnis_canon)
         else:
             esc=("colgó_en_ivr" if er=="CANCELLED" else
                  "agente_no_disponible" if er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE") else "no_enrutada")
-            _append(orig_cid,detect_time,ani_cliente,False,None,0,0,0,er,esc,dnis_marcado=dnis_marcado)
+            _append(orig_cid,detect_time,ani_cliente,False,None,0,0,0,er,esc,dnis_marcado=dnis_canon)
 
     if not resultados: return pd.DataFrame()
     df=pd.DataFrame(resultados)
