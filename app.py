@@ -1072,59 +1072,30 @@ c8.metric("Dur. prom.",       fmt_dur(avg_dur))
 c9.metric("Espera prom.",     fmt_dur(avg_esp))
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Selector de canal ──────────────────────────────────────────────────────────
-_dids_cfg = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
-_canal_opts = ["🌐 Todos"] + [
-    v["bandera"] + " " + v["pais"]
-    for v in _dids_cfg.values() if v.get("activo", True)
-]
-_did_by_label = {"🌐 Todos": None}
-for _dk, _dv in _dids_cfg.items():
-    if _dv.get("activo", True):
-        _did_by_label[_dv["bandera"] + " " + _dv["pais"]] = _dk
-
-_canal_idx = _canal_opts.index(st.session_state.canal_sel) if st.session_state.canal_sel in _canal_opts else 0
-_canal_nuevo = st.radio("Canal", _canal_opts, index=_canal_idx, horizontal=True, label_visibility="collapsed")
-if _canal_nuevo != st.session_state.canal_sel:
-    st.session_state.canal_sel = _canal_nuevo
-    st.rerun()
-
-_did_filtro = _did_by_label.get(st.session_state.canal_sel)
-
-# Filtrar df_ent por DID si aplica
-if _did_filtro and not df_ent.empty:
-    if "dnis_marcado" in df_ent.columns:
-        # Normalizar: comparar últimos dígitos por si hay prefijos distintos
-        _did_norm = norm_num(_did_filtro)
-        df_ent = df_ent[df_ent["dnis_marcado"].apply(norm_num) == _did_norm].copy()
-    # Si no existe columna, no filtrar (datos cacheados sin ella)
-
-if _did_filtro:
-    _info_did = _dids_cfg.get(_did_filtro, {})
-    st.markdown(
-        "<div style='background:" + c["card"] + ";border:1px solid " + c["border"] + ";"
-        "border-left:3px solid " + c["primary"] + ";border-radius:8px;padding:10px 16px;"
-        "margin-bottom:8px;display:flex;align-items:center;gap:12px'>"
-        "<span style='font-size:22px'>" + _info_did.get("bandera","") + "</span>"
-        "<div><div style='color:" + c["text"] + ";font-weight:500'>"
-        + _info_did.get("pais","") + " · DID " + _did_filtro + "</div>"
-        "<div style='color:" + c["muted2"] + ";font-size:12px;font-family:JetBrains Mono,monospace'>"
-        "Mostrando solo llamadas de este canal</div></div></div>",
-        unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
 # ── Tabs ───────────────────────────────────────────────────────────────────────
 tabs = st.tabs(["VISIÓN GENERAL","ENTRANTES","SALIENTES","AGENTES","TURNOS","SEGUIMIENTO","CLIENTES","REGISTROS"])
 tab_ov,tab_ent,tab_sal,tab_ag,tab_tur,tab_seg,tab_cl,tab_raw_t = tabs
 
 # ── TAB 0: VISIÓN GENERAL ──────────────────────────────────────────────────────
 with tab_ov:
+    # Filtro canal en visión general
+    _dids_cfgov = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
+    _canal_opts_ov = ["🌐 Todos"] + [v["bandera"]+" "+v["pais"]+" ("+k+")" for k,v in _dids_cfgov.items() if v.get("activo",True)]
+    _did_by_ov = {"🌐 Todos": None}
+    for _k,_v in _dids_cfgov.items():
+        if _v.get("activo",True): _did_by_ov[_v["bandera"]+" "+_v["pais"]+" ("+_k+")"] = _k
+    f_canal_ov = st.radio("Filtrar por canal", _canal_opts_ov, horizontal=True, label_visibility="collapsed", key="canal_ov")
+    _did_ov = _did_by_ov.get(f_canal_ov)
+    df_ent_ov = df_ent[df_ent["dnis_marcado"]==_did_ov].copy() if _did_ov and "dnis_marcado" in df_ent.columns else df_ent.copy()
+    _n_at_ov  = int(df_ent_ov["atendida"].sum()) if not df_ent_ov.empty else 0
+    _n_per_ov = len(df_ent_ov) - _n_at_ov
+    _pct_ov   = round(_n_at_ov/len(df_ent_ov)*100) if len(df_ent_ov) else 0
+
     r1,r2,r3 = st.columns([1.1,1.4,1.5])
     with r1:
-        fig_d = go.Figure(go.Pie(labels=["Atendidas","Perdidas"], values=[n_ent_at,n_ent_per],
+        fig_d = go.Figure(go.Pie(labels=["Atendidas","Perdidas"], values=[_n_at_ov, _n_per_ov],
             hole=0.7, marker=dict(colors=[c["bar_green"],c["bar_red"]], line=dict(width=0)), textinfo="none"))
-        fig_d.add_annotation(text=f"<b>{pct_at}%</b>", x=0.5, y=0.56, font=dict(size=30,color=c["text"]), showarrow=False)
+        fig_d.add_annotation(text=f"<b>{_pct_ov}%</b>", x=0.5, y=0.56, font=dict(size=30,color=c["text"]), showarrow=False)
         fig_d.add_annotation(text="atención",           x=0.5, y=0.40, font=dict(size=12,color=c["muted"]), showarrow=False)
         fig_d.update_layout(height=200, showlegend=False, **P)
         st.plotly_chart(fig_d, use_container_width=True)
@@ -1132,14 +1103,14 @@ with tab_ov:
             "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:-10px'>"
             "<div style='background:" + c["card"] + ";border:1px solid " + c["green_border"] + ";border-radius:8px;padding:10px;text-align:center'>"
             "<div style='color:" + c["green_dim"] + ";font-size:10px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>ATENDIDAS</div>"
-            "<div style='color:" + c["green"] + ";font-size:22px;font-weight:300'>" + str(n_ent_at) + "</div></div>"
+            "<div style='color:" + c["green"] + ";font-size:22px;font-weight:300'>" + str(_n_at_ov) + "</div></div>"
             "<div style='background:" + c["card"] + ";border:1px solid " + c["red_border"] + ";border-radius:8px;padding:10px;text-align:center'>"
             "<div style='color:" + c["red_dim"] + ";font-size:10px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>PERDIDAS</div>"
-            "<div style='color:" + c["red"] + ";font-size:22px;font-weight:300'>" + str(n_ent_per) + "</div></div></div>",
+            "<div style='color:" + c["red"] + ";font-size:22px;font-weight:300'>" + str(_n_per_ov) + "</div></div></div>",
             unsafe_allow_html=True)
     with r2:
-        if not df_ent.empty and "hora" in df_ent.columns:
-            hd = df_ent.groupby(["hora","atendida"]).size().reset_index(name="n")
+        if not df_ent_ov.empty and "hora" in df_ent_ov.columns:
+            hd = df_ent_ov.groupby(["hora","atendida"]).size().reset_index(name="n")
             hd["estado"] = hd["atendida"].map({True:"Atendida",False:"Perdida"})
             fig_h = px.bar(hd, x="hora", y="n", color="estado",
                 color_discrete_map={"Atendida":c["bar_green"],"Perdida":c["bar_red"]}, barmode="stack")
@@ -1150,8 +1121,8 @@ with tab_ov:
             fig_h.update_traces(marker_line_width=0)
             st.plotly_chart(fig_h, use_container_width=True)
     with r3:
-        if not df_ent.empty and "escenario" in df_ent.columns:
-            ec = df_ent["escenario"].value_counts().reset_index()
+        if not df_ent_ov.empty and "escenario" in df_ent_ov.columns:
+            ec = df_ent_ov["escenario"].value_counts().reset_index()
             ec.columns = ["esc","n"]; ec["label"]=ec["esc"].apply(esc_es); ec["color"]=ec["esc"].apply(esc_color)
             ec = ec.sort_values("n", ascending=True)
             fig_ec = go.Figure(go.Bar(x=ec["n"], y=ec["label"], orientation="h",
@@ -1161,9 +1132,9 @@ with tab_ov:
                 title=dict(text="Escenarios",font=dict(size=12,color=c["muted"]),x=0),
                 xaxis=dict(gridcolor=c["grid"],title=""), yaxis=dict(gridcolor=c["grid"],title=""))
             st.plotly_chart(fig_ec, use_container_width=True)
-    if not df_ent.empty and "fecha" in df_ent.columns:
+    if not df_ent_ov.empty and "fecha" in df_ent_ov.columns:
         st.markdown("---")
-        daily = df_ent.groupby(["fecha","atendida"]).size().reset_index(name="n")
+        daily = df_ent_ov.groupby(["fecha","atendida"]).size().reset_index(name="n")
         daily["estado"] = daily["atendida"].map({True:"Atendida",False:"Perdida"})
         if len(daily["fecha"].unique()) > 1:
             fig_ev = px.area(daily, x="fecha", y="n", color="estado",
@@ -1180,20 +1151,37 @@ with tab_ov:
 with tab_ent:
     if df_ent.empty: st.info("Sin llamadas entrantes.")
     else:
-        fc1,fc2,fc3,fc4 = st.columns([2,1,1,1])
-        with fc1: busq = st.text_input("🔍 Buscar número", placeholder="519…", key="busq_ent")
-        with fc2: f_est = st.selectbox("Estado", ["Todos","Atendidas","Perdidas"], key="fest_ent")
-        with fc3:
+        # ── Filtros ────────────────────────────────────────────────────────────
+        _dids_cfg2 = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
+        _canal_opts2 = ["🌐 Todos"] + [
+            v["bandera"] + " " + v["pais"] + " (" + k + ")"
+            for k, v in _dids_cfg2.items() if v.get("activo", True)
+        ]
+        _did_by_label2 = {"🌐 Todos": None}
+        for _dk2, _dv2 in _dids_cfg2.items():
+            if _dv2.get("activo", True):
+                _did_by_label2[_dv2["bandera"] + " " + _dv2["pais"] + " (" + _dk2 + ")"] = _dk2
+
+        fc1,fc2,fc3,fc4,fc5 = st.columns([1.8,1,1,1,1])
+        with fc1: busq  = st.text_input("🔍 Buscar número", placeholder="519…", key="busq_ent")
+        with fc2: f_canal= st.selectbox("Canal", _canal_opts2, key="fcal_ent")
+        with fc3: f_est  = st.selectbox("Estado", ["Todos","Atendidas","Perdidas"], key="fest_ent")
+        with fc4:
             esc_opts = ["Todos"] + (sorted(df_ent["escenario_es"].dropna().unique().tolist()) if "escenario_es" in df_ent.columns else [])
             f_esc = st.selectbox("Escenario", esc_opts, key="fesc_ent")
-        with fc4:
+        with fc5:
             f_ag = st.selectbox("Agente", ["Todos"]+sorted(df_ent["agente"].dropna().unique().tolist()), key="fag_ent")
+
         dv = df_ent.copy()
-        if busq: dv = dv[dv["numero_cliente"].str.contains(busq,na=False)]
+        # Filtro por canal: comparación directa con dnis_marcado
+        _did_sel = _did_by_label2.get(f_canal)
+        if _did_sel and "dnis_marcado" in dv.columns:
+            dv = dv[dv["dnis_marcado"] == _did_sel]
+        if busq:         dv = dv[dv["numero_cliente"].str.contains(busq, na=False)]
         if f_est=="Atendidas": dv = dv[dv["atendida"]==True]
         elif f_est=="Perdidas": dv = dv[dv["atendida"]==False]
         if f_esc!="Todos" and "escenario_es" in dv.columns: dv = dv[dv["escenario_es"]==f_esc]
-        if f_ag!="Todos": dv = dv[dv["agente"]==f_ag]
+        if f_ag!="Todos":  dv = dv[dv["agente"]==f_ag]
         cols_t = [cx for cx in ["detect_time","numero_cliente","bandera","escenario_es","agente",
                                   "agente_timbrando","espera_usuario","responsable","agente_turno",
                                   "duracion","espera_total","n_intentos"] if cx in dv.columns]
