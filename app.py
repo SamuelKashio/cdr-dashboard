@@ -19,57 +19,44 @@ except Exception:
 
 # ── Defaults ───────────────────────────────────────────────────────────────────
 DEFAULT_AGENTES = {
-    "8668106": {"nombre":"Central Virtual",   "activo":True,  "es_central":True},
-    "8668109": {"nombre":"Alonso Loyola",      "activo":True,  "es_central":False},
-    "8668110": {"nombre":"Jose Luis Cahuana",  "activo":True,  "es_central":False},
-    "8668112": {"nombre":"Daniel Huayta",      "activo":True,  "es_central":False},
-    "8668111": {"nombre":"Deivy Chavez",       "activo":True,  "es_central":False},
-    "8668114": {"nombre":"Joe Villanueva",     "activo":True,  "es_central":False},
-    "8672537": {"nombre":"Victor Figueroa",    "activo":True,  "es_central":False},
-    "SIN_ANEXO_MACEDO": {"nombre":"Victor Macedo","activo":True,"es_central":False,"sin_anexo":True},
+    "8668106":{"nombre":"Central Virtual","activo":True, "es_central":True},
+    "8668109":{"nombre":"Alonso Loyola",  "activo":True, "es_central":False},
+    "8668110":{"nombre":"Jose Luis Cahuana","activo":True,"es_central":False},
+    "8668112":{"nombre":"Daniel Huayta",  "activo":True, "es_central":False},
+    "8668111":{"nombre":"Deivy Chavez",   "activo":True, "es_central":False},
+    "8668114":{"nombre":"Joe Villanueva", "activo":True, "es_central":False},
+    "8672537":{"nombre":"Victor Figueroa","activo":True, "es_central":False},
 }
 DEFAULT_TURNOS = [
-    {"dias":[0,1,2,3,4],"h_ini": 6,"h_fin":14,"agente":"Alonso Loyola",    "activo":True,"dids":[]},
-    {"dias":[0,1,2,3,4],"h_ini":14,"h_fin":22,"agente":"Jose Luis Cahuana","activo":True,"dids":[]},
-    {"dias":[0,1,2,3,4],"h_ini":22,"h_fin":30,"agente":"Deivy Chavez",     "activo":True,"dids":[]},
-    {"dias":[5,6],      "h_ini": 6,"h_fin":14,"agente":"Daniel Huayta",    "activo":True,"dids":[]},
-    {"dias":[5,6],      "h_ini":14,"h_fin":22,"agente":"Luz Goicochea",    "activo":True,"dids":[]},
-    {"dias":[5,6],      "h_ini":22,"h_fin":30,"agente":"Joe Villanueva",   "activo":True,"dids":[]},
-    {"dias":[0,1,2,3,4],"h_ini": 9,"h_fin":18,"agente":"Victor Macedo",   "activo":True,"dids":["7866715462"]},
+    {"dias":[0,1,2,3,4],"h_ini": 6,"h_fin":14,"agente":"Alonso Loyola",    "activo":True},
+    {"dias":[0,1,2,3,4],"h_ini":14,"h_fin":22,"agente":"Jose Luis Cahuana","activo":True},
+    {"dias":[0,1,2,3,4],"h_ini":22,"h_fin":30,"agente":"Deivy Chavez",     "activo":True},
+    {"dias":[5,6],      "h_ini": 6,"h_fin":14,"agente":"Daniel Huayta",    "activo":True},
+    {"dias":[5,6],      "h_ini":14,"h_fin":22,"agente":"Luz Goicochea",    "activo":True},
+    {"dias":[5,6],      "h_ini":22,"h_fin":30,"agente":"Joe Villanueva",   "activo":True},
 ]
 DEFAULT_NUMS_EXCLUIDOS = ["51902871550"]
-DEFAULT_DIDS = {
-    "5116429375": {"pais":"Perú",           "bandera":"🇵🇪","activo":True},
-    "7866715462": {"pais":"Estados Unidos", "bandera":"🇺🇸","activo":True},
-}
 
 CONFIG_FILE = "config.json"
 def load_config():
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE,"r",encoding="utf-8") as f: saved=json.load(f)
-            return (saved.get("agentes",   json.loads(json.dumps(DEFAULT_AGENTES))),
-                    saved.get("turnos",    json.loads(json.dumps(DEFAULT_TURNOS))),
-                    saved.get("nums_excluidos", list(DEFAULT_NUMS_EXCLUIDOS)),
-                    saved.get("ventana_cb",5),
-                    saved.get("modo_demo", False),
-                    saved.get("dids",      json.loads(json.dumps(DEFAULT_DIDS))))
+            return (saved.get("agentes",json.loads(json.dumps(DEFAULT_AGENTES))),
+                    saved.get("turnos",json.loads(json.dumps(DEFAULT_TURNOS))),
+                    saved.get("nums_excluidos",list(DEFAULT_NUMS_EXCLUIDOS)),
+                    saved.get("ventana_cb",5), saved.get("modo_demo",False))
         except: pass
-    return (json.loads(json.dumps(DEFAULT_AGENTES)),
-            json.loads(json.dumps(DEFAULT_TURNOS)),
-            list(DEFAULT_NUMS_EXCLUIDOS), 5, False,
-            json.loads(json.dumps(DEFAULT_DIDS)))
+    return (json.loads(json.dumps(DEFAULT_AGENTES)),json.loads(json.dumps(DEFAULT_TURNOS)),
+            list(DEFAULT_NUMS_EXCLUIDOS),5,False)
 
 def save_config():
     try:
         with open(CONFIG_FILE,"w",encoding="utf-8") as f:
-            json.dump({"agentes":st.session_state.cfg_agentes,
-                       "turnos": st.session_state.cfg_turnos,
+            json.dump({"agentes":st.session_state.cfg_agentes,"turnos":st.session_state.cfg_turnos,
                        "nums_excluidos":st.session_state.cfg_nums_excluidos,
                        "ventana_cb":st.session_state.cfg_ventana_cb,
-                       "modo_demo":st.session_state.cfg_modo_demo,
-                       "dids":st.session_state.cfg_dids},
-                      f, ensure_ascii=False, indent=2)
+                       "modo_demo":st.session_state.cfg_modo_demo},f,ensure_ascii=False,indent=2)
         return True
     except Exception as e: st.error(f"No se pudo guardar: {e}"); return False
 
@@ -105,40 +92,51 @@ T = {
 
 def get_css(c):
     is_light = c["bg"] != "#06080F"
-    st = c["text"] if is_light else c["muted"]
-    return (
-        "<style>"
-        "@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');"
-        "html,body,[class*='css']{font-family:'Outfit',sans-serif!important}"
-        f".stApp{{background:{c['bg']}!important}}.stApp>header{{background:transparent!important}}"
-        f"section[data-testid='stSidebar']{{background:{c['sidebar']}!important;border-right:1px solid {c['border']}!important}}"
-        f"section[data-testid='stSidebar'] *{{color:{st}!important}}"
-        f"section[data-testid='stSidebar'] h1,section[data-testid='stSidebar'] strong{{color:{c['text']}!important}}"
-        f"section[data-testid='stSidebar'] label{{color:{c['muted2']}!important;font-size:11px!important;letter-spacing:.5px;text-transform:uppercase}}"
-        f"section[data-testid='stSidebar'] input{{background:{c['input_bg']}!important;border:1px solid {c['primary_border']}!important;color:{c['text']}!important;font-family:'JetBrains Mono',monospace!important;font-size:13px!important}}"
-        f"section[data-testid='stSidebar'] .stButton button{{width:100%;background:{c['primary_dim']}!important;border:1px solid {c['primary_border']}!important;color:{c['primary']}!important;font-weight:600!important}}"
-        f"[data-testid='metric-container']{{background:{c['card']}!important;border:1px solid {c['border']}!important;border-radius:12px!important;padding:16px 18px!important}}"
-        f"[data-testid='stMetricLabel']{{color:{c['muted']}!important;font-size:10px!important;letter-spacing:1.8px!important;text-transform:uppercase!important;font-family:'JetBrains Mono',monospace!important}}"
-        f"[data-testid='stMetricValue']{{color:{c['text']}!important;font-size:26px!important;font-weight:300!important}}"
-        f"h1,h2,h3,h4,h5,h6{{color:{c['text']}!important;font-family:'Outfit',sans-serif!important}}"
-        f".stMarkdown p,.stMarkdown li{{color:{c['muted']}!important}}"
-        f".stCaption *{{color:{c['muted2']}!important}}"
-        f".stTabs [data-baseweb='tab-list']{{background:transparent!important;gap:2px!important;border-bottom:1px solid {c['border']}!important}}"
-        f".stTabs [data-baseweb='tab']{{background:transparent!important;color:{c['tab']}!important;font-size:11px!important;font-weight:600!important;letter-spacing:1px!important;text-transform:uppercase!important;padding:10px 18px!important;border-bottom:2px solid transparent!important;border-radius:0!important}}"
-        f".stTabs [aria-selected='true']{{color:{c['tab_sel']}!important;border-bottom:2px solid {c['tab_sel_border']}!important}}"
-        ".stTabs [data-baseweb='tab-border']{display:none!important}"
-        ".stTabs [data-baseweb='tab-panel']{padding-top:22px!important}"
-        f"[data-testid='stDataFrame']{{border:1px solid {c['border']}!important;border-radius:10px!important;overflow:hidden!important}}"
-        f"[data-testid='stDataFrame'] *{{color:{c['text']}!important}}"
-        f"[data-testid='stDataFrame'] th{{background:{c['card2']}!important;color:{c['muted']}!important;font-weight:600!important;border-bottom:1px solid {c['border']}!important}}"
-        f"[data-testid='stDataFrame'] td{{background:{c['card']}!important;border-bottom:1px solid {c['border2']}!important}}"
-        "::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}"
-        f"::-webkit-scrollbar-thumb{{background:{c['scrollbar']};border-radius:4px}}"
-        "@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}"
-        "</style>"
-    )
+    sidebar_text = c["muted"] if not is_light else c["text"]
+    sidebar_label = c["muted2"] if not is_light else c["muted2"]
+    df_bg = c["card"]
+    df_text = c["text"]
+    return f"""<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+html,body,[class*="css"]{{font-family:'Outfit',sans-serif!important}}
+.stApp{{background:{c['bg']}!important}}.stApp>header{{background:transparent!important}}
+section[data-testid="stSidebar"]{{background:{c['sidebar']}!important;border-right:1px solid {c['border']}!important}}
+section[data-testid="stSidebar"] *{{color:{sidebar_text}!important}}
+section[data-testid="stSidebar"] h1,section[data-testid="stSidebar"] strong{{color:{c['text']}!important}}
+section[data-testid="stSidebar"] label{{color:{sidebar_label}!important;font-size:11px!important;letter-spacing:.5px;text-transform:uppercase}}
+section[data-testid="stSidebar"] input{{background:{c['input_bg']}!important;border:1px solid {c['primary_border']}!important;color:{c['text']}!important;font-family:'JetBrains Mono',monospace!important;font-size:13px!important}}
+section[data-testid="stSidebar"] .stButton button{{width:100%;background:{c['primary_dim']}!important;border:1px solid {c['primary_border']}!important;color:{c['primary']}!important;font-weight:600!important}}
+[data-testid="metric-container"]{{background:{c['card']}!important;border:1px solid {c['border']}!important;border-radius:12px!important;padding:16px 18px!important}}
+[data-testid="stMetricLabel"]{{color:{c['muted']}!important;font-size:10px!important;letter-spacing:1.8px!important;text-transform:uppercase!important;font-family:'JetBrains Mono',monospace!important}}
+[data-testid="stMetricValue"]{{color:{c['text']}!important;font-size:26px!important;font-weight:300!important}}
+[data-testid="stMetricDelta"]{{font-size:11px!important}}
+h1,h2,h3{{color:{c['text']}!important;font-family:'Outfit',sans-serif!important}}
+h4,h5,h6{{color:{c['text']}!important}}
+p,li,span,div{{color:{c['text']}}}
+.stMarkdown p,.stMarkdown li{{color:{c['muted']}!important}}
+.stCaption *{{color:{c['muted2']}!important}}
+.stTabs [data-baseweb="tab-list"]{{background:transparent!important;gap:2px!important;border-bottom:1px solid {c['border']}!important}}
+.stTabs [data-baseweb="tab"]{{background:transparent!important;color:{c['tab']}!important;font-size:11px!important;font-weight:600!important;letter-spacing:1px!important;text-transform:uppercase!important;padding:10px 18px!important;border-bottom:2px solid transparent!important;border-radius:0!important}}
+.stTabs [aria-selected="true"]{{color:{c['tab_sel']}!important;border-bottom:2px solid {c['tab_sel_border']}!important}}
+.stTabs [data-baseweb="tab-border"]{{display:none!important}}
+.stTabs [data-baseweb="tab-panel"]{{padding-top:22px!important}}
+[data-testid="stDataFrame"]{{border:1px solid {c['border']}!important;border-radius:10px!important;overflow:hidden!important}}
+[data-testid="stDataFrame"] *{{color:{df_text}!important}}
+[data-testid="stDataFrame"] th{{background:{c['card2']}!important;color:{c['muted']}!important;font-weight:600!important;border-bottom:1px solid {c['border']}!important}}
+[data-testid="stDataFrame"] td{{background:{c['card']}!important;border-bottom:1px solid {c['border2']}!important}}
+[data-testid="stDataFrame"] tr:hover td{{background:{c['card2']}!important}}
+div[data-testid="stSelectbox"] > div,div[data-testid="stTextInput"] > div > div{{background:{c['input_bg']}!important;border:1px solid {c['border']}!important;color:{c['text']}!important;border-radius:8px!important}}
+div[data-testid="stSelectbox"] *,div[data-testid="stTextInput"] *{{color:{c['text']}!important}}
+.stProgress > div > div{{background:{c['border']}!important}}
+.stProgress > div > div > div{{background:{c['primary']}!important}}
+.stAlert{{background:{c['card']}!important;border:1px solid {c['border']}!important;color:{c['text']}!important}}
+.stAlert *{{color:{c['text']}!important}}
+::-webkit-scrollbar{{width:4px;height:4px}}::-webkit-scrollbar-track{{background:transparent}}
+::-webkit-scrollbar-thumb{{background:{c['scrollbar']};border-radius:4px}}
+@keyframes blink{{0%,100%{{opacity:1}}50%{{opacity:.2}}}}
+</style>"""
 
-ESCENARIOS = {
+ESCENARIOS={
     "atendida":              {"es":"✅ Atendida",            "color":"#22C55E"},
     "colgó_en_ivr":          {"es":"📵 Colgó en IVR",        "color":"#6B7280"},
     "colgó_timbrando":       {"es":"📵 Colgó timbrando",     "color":"#F59E0B"},
@@ -149,603 +147,383 @@ ESCENARIOS = {
     "rechazada":             {"es":"❌ Rechazada",             "color":"#EC4899"},
     "perdida":               {"es":"❌ Perdida",               "color":"#EF4444"},
 }
-END_REASONS = {
-    "OK":"Completada","CANCELLED":"Cancelada","NO_ANSWER":"Sin respuesta",
+END_REASONS={"OK":"Completada","CANCELLED":"Cancelada","NO_ANSWER":"Sin respuesta",
     "TEMPORARILY_UNAVAILABLE":"No disponible","NOT_FOUND":"No encontrado",
-    "DECLINE":"Rechazada","SERVICE_UNAVAILABLE":"Servicio no disponible",
-}
-AGENTES_SIN_ID = {"Luz Goicochea"}
-ESC_RESPONSABLE = {"no_respondió","múltiples_no_respuesta","agente_no_disponible",
-                   "rechazada","colgó_timbrando","perdida"}
+    "DECLINE":"Rechazada","SERVICE_UNAVAILABLE":"Servicio no disponible"}
+AGENTES_SIN_ID={"Luz Goicochea"}
+ESC_RESPONSABLE={"no_respondió","múltiples_no_respuesta","agente_no_disponible","rechazada","colgó_timbrando","perdida"}
 
-st.set_page_config(page_title="Supervisor · Soporte", page_icon="🎯",
-                   layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Supervisor · Soporte",page_icon="🎯",layout="wide",initial_sidebar_state="expanded")
 
 # ── Session state ──────────────────────────────────────────────────────────────
 if "cfg_loaded" not in st.session_state:
-    _ag,_tu,_ne,_vc,_md,_di = load_config()
-    st.session_state.cfg_agentes        = _ag
-    st.session_state.cfg_turnos         = _tu
-    st.session_state.cfg_nums_excluidos = _ne
-    st.session_state.cfg_ventana_cb     = _vc
-    st.session_state.cfg_modo_demo      = _md
-    st.session_state.cfg_dids           = _di
-    st.session_state.cfg_loaded         = True
-if "show_config"  not in st.session_state: st.session_state.show_config  = False
-if "theme"        not in st.session_state: st.session_state.theme        = "dark"
-if "auto_loaded"  not in st.session_state: st.session_state.auto_loaded  = False
-if "canal_sel"    not in st.session_state: st.session_state.canal_sel    = "🌐 Todos"
+    _ag,_tu,_ne,_vc,_md = load_config()
+    st.session_state.cfg_agentes=_ag; st.session_state.cfg_turnos=_tu
+    st.session_state.cfg_nums_excluidos=_ne; st.session_state.cfg_ventana_cb=_vc
+    st.session_state.cfg_modo_demo=_md; st.session_state.cfg_loaded=True
+if "show_config"  not in st.session_state: st.session_state.show_config=False
+if "theme"        not in st.session_state: st.session_state.theme="dark"
+if "auto_loaded"  not in st.session_state: st.session_state.auto_loaded=False
 for k in ["df_ent","df_sal","df_raw","df_live_raw","label","error","loaded"]:
-    if k not in st.session_state: st.session_state[k] = None if k!="loaded" else False
+    if k not in st.session_state: st.session_state[k]=None if k!="loaded" else False
 
 # ── Config accessors ───────────────────────────────────────────────────────────
-def get_agentes():
-    return {k:v["nombre"] for k,v in st.session_state.cfg_agentes.items()}
-
-def get_central_id():
-    return next((k for k,v in st.session_state.cfg_agentes.items() if v.get("es_central")),"8668106")
-
-def get_agentes_sin_central():
-    return {k:v["nombre"] for k,v in st.session_state.cfg_agentes.items()
-            if not v.get("es_central") and v.get("activo",True)}
-
-def get_agentes_con_anexo():
-    """Agentes reales que tienen ID de endpoint (no sin_anexo)."""
-    return {k:v["nombre"] for k,v in st.session_state.cfg_agentes.items()
-            if not v.get("es_central") and v.get("activo",True) and not v.get("sin_anexo",False)}
-
-def get_turnos():
-    return [t for t in st.session_state.cfg_turnos if t.get("activo",True)]
-
-def get_nums_excluidos():
-    return [] if st.session_state.cfg_modo_demo else list(st.session_state.cfg_nums_excluidos)
-
-def get_did_info(did):
-    dids = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
-    return dids.get(str(did), {"pais":"Desconocido","bandera":"🌐"})
+def get_agentes():    return {k:v["nombre"] for k,v in st.session_state.cfg_agentes.items()}
+def get_central_id(): return next((k for k,v in st.session_state.cfg_agentes.items() if v.get("es_central")),"8668106")
+def get_agentes_sin_central(): return {k:v["nombre"] for k,v in st.session_state.cfg_agentes.items() if not v.get("es_central") and v.get("activo",True)}
+def get_turnos():     return [t for t in st.session_state.cfg_turnos if t.get("activo",True)]
+def get_nums_excluidos(): return [] if st.session_state.cfg_modo_demo else list(st.session_state.cfg_nums_excluidos)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def fmt_dur(s):
     try:
-        s = int(s or 0)
-        if s <= 0: return "—"
-        if s < 60: return f"{s}s"
-        m, sec = divmod(s, 60)
-        return f"{m}m {sec:02d}s" if sec else f"{m}m"
+        s=int(s or 0)
+        if s<=0: return "—"
+        if s<60: return f"{s}s"
+        m,sec=divmod(s,60); return f"{m}m {sec:02d}s" if sec else f"{m}m"
     except: return "—"
 
-def safe_mean(df, col):
+def safe_mean(df,col):
     try:
         if df is None or df.empty or col not in df.columns or "atendida" not in df.columns: return 0
-        s = df[df["atendida"]==True][col].dropna()
-        if not len(s): return 0
-        m = float(s.mean())
-        return 0 if m != m else int(m)
+        s=df[df["atendida"]==True][col].dropna()
+        if len(s)==0: return 0
+        m=float(s.mean()); return 0 if m!=m else int(m)
     except: return 0
 
 def norm_num(n):
-    n = str(n or "").strip().replace("+","").replace(" ","").replace("-","")
-    return n[-9:] if len(n) >= 9 else n
+    n=str(n or "").strip().replace("+","").replace(" ","").replace("-","")
+    return n[-9:] if len(n)>=9 else n
 
-def agente_de_turno(dt, did=None):
-    try:
-        if pd.isna(dt): return "Sin turno"
-    except: return "Sin turno"
-    try:
-        did_str = None
-        if did is not None:
-            d = str(did).strip()
-            did_str = d if d not in ("","nan","None","NaT") else None
-        dow, h = dt.weekday(), dt.hour
-        h_ext = h if h >= 6 else h + 24
-        turnos = get_turnos()
-        # ¿existe algún turno específico para este DID?
-        did_tiene_turno = did_str and any(did_str in (t.get("dids") or []) for t in turnos)
-
-        def turno_aplica(t):
-            t_dids = t.get("dids") or []
-            if t_dids:
-                return did_str in t_dids if did_str else False
-            else:
-                return not did_tiene_turno  # turno general solo si no hay turno específico para el DID
-
-        for t in turnos:
-            if turno_aplica(t) and dow in t["dias"] and t["h_ini"] <= h_ext < t["h_fin"]:
-                return t["agente"]
-        dow_prev = (dow-1) % 7
-        for t in turnos:
-            if turno_aplica(t) and dow_prev in t["dias"] and t["h_ini"] <= h_ext < t["h_fin"]:
-                return t["agente"]
-        return "Sin turno"
-    except: return "Sin turno"
+def agente_de_turno(dt):
+    if pd.isna(dt): return "Sin turno"
+    dow,h=dt.weekday(),dt.hour; h_ext=h if h>=6 else h+24
+    for t in get_turnos():
+        if dow in t["dias"] and t["h_ini"]<=h_ext<t["h_fin"]: return t["agente"]
+    dow_prev=(dow-1)%7
+    for t in get_turnos():
+        if dow_prev in t["dias"] and t["h_ini"]<=h_ext<t["h_fin"]: return t["agente"]
+    return "Sin turno"
 
 def esc_es(k): return ESCENARIOS.get(k,{}).get("es",k)
 def esc_color(k): return ESCENARIOS.get(k,{}).get("color","#6B7280")
 
 # ── API ────────────────────────────────────────────────────────────────────────
-PAGE_SIZE = 1000; CHUNK_DAYS = 10
-
-def _fetch_chunk(ds, de):
-    base = {"username":_U,"password":_P,"format":"json","dateStart":ds,"dateEnd":de}
-    all_cdrs, ini = [], 0
+PAGE_SIZE=1000; CHUNK_DAYS=10
+def _fetch_chunk(ds,de):
+    base={"username":_U,"password":_P,"format":"json","dateStart":ds,"dateEnd":de}
+    all_cdrs,ini=[],0
     while True:
-        r = requests.get("https://callmyway.com/getCdrs.php",
-                         params={**base,"ini":ini,"cant":PAGE_SIZE}, timeout=30)
-        r.raise_for_status(); data = r.json()
-        page = data.get("cdrs",data) if isinstance(data,dict) else data
+        r=requests.get("https://callmyway.com/getCdrs.php",params={**base,"ini":ini,"cant":PAGE_SIZE},timeout=30)
+        r.raise_for_status(); data=r.json()
+        page=data.get("cdrs",data) if isinstance(data,dict) else data
         if not page: break
         all_cdrs.extend(page)
-        if len(page) < PAGE_SIZE: break
-        ini += PAGE_SIZE
+        if len(page)<PAGE_SIZE: break
+        ini+=PAGE_SIZE
     return all_cdrs
 
-def fetch_cdrs(date_start=None, date_end=None, live=False, progress_cb=None):
+def fetch_cdrs(date_start=None,date_end=None,live=False,progress_cb=None):
     if live:
         try:
-            r = requests.get("https://callmyway.com/getCdrs.php",
-                params={"username":_U,"password":_P,"live":1,"fullAccount":1,"format":"json"}, timeout=20)
-            r.raise_for_status(); data = r.json()
-            cdrs = data.get("cdrs",data) if isinstance(data,dict) else data
-            return pd.DataFrame(cdrs or []), None
-        except Exception as e: return None, str(e)
+            r=requests.get("https://callmyway.com/getCdrs.php",
+                params={"username":_U,"password":_P,"live":1,"fullAccount":1,"format":"json"},timeout=20)
+            r.raise_for_status(); data=r.json()
+            cdrs=data.get("cdrs",data) if isinstance(data,dict) else data
+            return pd.DataFrame(cdrs or []),None
+        except Exception as e: return None,str(e)
     try:
-        dt_ini = datetime.strptime(date_start,"%Y-%m-%d %H:%M:%S")
-        dt_fin = datetime.strptime(date_end,  "%Y-%m-%d %H:%M:%S")
-    except Exception as e: return None, f"Fechas inválidas: {e}"
-    chunks, cursor = [], dt_ini
-    while cursor < dt_fin:
-        ce = min(cursor+timedelta(days=CHUNK_DAYS), dt_fin)
-        chunks.append((cursor,ce)); cursor = ce
-    all_cdrs = []
+        dt_ini=datetime.strptime(date_start,"%Y-%m-%d %H:%M:%S")
+        dt_fin=datetime.strptime(date_end,  "%Y-%m-%d %H:%M:%S")
+    except Exception as e: return None,f"Fechas inválidas: {e}"
+    chunks,cursor=[],dt_ini
+    while cursor<dt_fin:
+        ce=min(cursor+timedelta(days=CHUNK_DAYS),dt_fin); chunks.append((cursor,ce)); cursor=ce
+    all_cdrs=[]
     for i,(c_ini,c_fin) in enumerate(chunks):
-        if progress_cb: progress_cb(i/len(chunks),
-            f"Chunk {i+1}/{len(chunks)} · {c_ini.strftime('%d/%m')}→{c_fin.strftime('%d/%m')} · {len(all_cdrs):,} reg")
-        try: all_cdrs.extend(_fetch_chunk(c_ini.strftime("%Y-%m-%d %H:%M:%S"), c_fin.strftime("%Y-%m-%d %H:%M:%S")))
+        if progress_cb: progress_cb(i/len(chunks),f"Chunk {i+1}/{len(chunks)} · {c_ini.strftime('%d/%m')}→{c_fin.strftime('%d/%m')} · {len(all_cdrs):,} reg")
+        try: all_cdrs.extend(_fetch_chunk(c_ini.strftime("%Y-%m-%d %H:%M:%S"),c_fin.strftime("%Y-%m-%d %H:%M:%S")))
         except: pass
-    if progress_cb: progress_cb(1.0, f"Completado · {len(all_cdrs):,} registros")
-    return (pd.DataFrame(all_cdrs) if all_cdrs else pd.DataFrame()), None
+    if progress_cb: progress_cb(1.0,f"Completado · {len(all_cdrs):,} registros")
+    return (pd.DataFrame(all_cdrs) if all_cdrs else pd.DataFrame()),None
 
 # ── Clasificación entrantes ────────────────────────────────────────────────────
 def clasificar_entrantes(df_inc):
     if df_inc is None or df_inc.empty: return pd.DataFrame()
-    CENTRAL_ID = get_central_id()
-    # Agentes con anexo real (para detectar registros de agente en CDRs)
-    agentes_con_anexo = set(get_agentes_con_anexo().keys())
-    nums_excluidos = {norm_num(n) for n in get_nums_excluidos()}
-
-    df_inc = df_inc.copy()
+    CENTRAL_ID=get_central_id(); agentes_reales=set(get_agentes_sin_central().keys())
+    nums_excluidos={norm_num(n) for n in get_nums_excluidos()}
+    df_inc=df_inc.copy()
     for col in ["dnis_user","ani_user","original_callid","ref_callid","ani","dnis"]:
-        if col in df_inc.columns:
-            df_inc[col] = df_inc[col].astype(str).str.strip().replace(
-                {"None":"","nan":"","null":"","<NA>":""})
-
+        if col in df_inc.columns: df_inc[col]=df_inc[col].astype(str).str.strip().replace({"None":"","nan":"","null":"","<NA>":""})
     if nums_excluidos and "ani" in df_inc.columns:
-        df_inc = df_inc[~df_inc["ani"].apply(norm_num).isin(nums_excluidos)]
+        df_inc=df_inc[~df_inc["ani"].apply(norm_num).isin(nums_excluidos)]
     if df_inc.empty: return pd.DataFrame()
-
-    df_trn = df_inc[df_inc["dnis_user"] == CENTRAL_ID]
-    df_ag  = df_inc[df_inc["dnis_user"].isin(agentes_con_anexo)]
-
-    trn_by_ref = {}
-    for _, row in df_trn.iterrows():
-        ref = str(row.get("ref_callid","")).strip()
-        if ref: trn_by_ref[ref] = row
-
-    ag_orig_set = set(df_ag["original_callid"].unique()) if not df_ag.empty else set()
-    resultados = []
-
-    def _append(orig_cid, detect_time, ani_cliente, atendida, agente_id,
-                duracion, ring_total, n_intentos, end_reason, escenario,
-                agente_timbrando=None, espera_usuario=0, dnis_marcado=""):
-        dnis_str = str(dnis_marcado).strip() if dnis_marcado else ""
-        did_info = get_did_info(dnis_str)
-        resultados.append({
-            "original_callid":orig_cid, "detect_time":detect_time,
-            "numero_cliente":ani_cliente, "atendida":atendida,
-            "agente":get_agentes().get(str(agente_id),"Sin atender") if agente_id else "Sin atender",
-            "agente_id":agente_id,
+    df_trn=df_inc[df_inc["dnis_user"]==CENTRAL_ID]; df_ag=df_inc[df_inc["dnis_user"].isin(agentes_reales)]
+    trn_by_ref={}
+    for _,row in df_trn.iterrows():
+        ref=str(row.get("ref_callid","")).strip()
+        if ref: trn_by_ref[ref]=row
+    ag_orig_set=set(df_ag["original_callid"].unique()) if not df_ag.empty else set()
+    resultados=[]
+    def _append(orig_cid,detect_time,ani_cliente,atendida,agente_id,duracion,ring_total,n_intentos,end_reason,escenario,agente_timbrando=None,espera_usuario=0):
+        resultados.append({"original_callid":orig_cid,"detect_time":detect_time,"numero_cliente":ani_cliente,"atendida":atendida,
+            "agente":get_agentes().get(str(agente_id),"Sin atender") if agente_id else "Sin atender","agente_id":agente_id,
             "agente_timbrando":get_agentes().get(str(agente_timbrando),"—") if agente_timbrando else "—",
-            "espera_usuario":max(0,int(espera_usuario or 0)),
-            "duracion":duracion, "espera_total":ring_total,
-            "n_intentos":n_intentos, "end_reason":end_reason,
-            "end_reason_es":END_REASONS.get(end_reason,end_reason),
-            "escenario":escenario, "escenario_es":esc_es(escenario),
-            "dnis_marcado":dnis_str,
-            "pais":did_info["pais"], "bandera":did_info["bandera"],
+            "espera_usuario":max(0,int(espera_usuario or 0)),"duracion":duracion,"espera_total":ring_total,
+            "n_intentos":n_intentos,"end_reason":end_reason,"end_reason_es":END_REASONS.get(end_reason,end_reason),
+            "escenario":escenario,"escenario_es":esc_es(escenario),
             "hora":detect_time.hour if pd.notna(detect_time) else None,
-            "fecha":detect_time.date() if pd.notna(detect_time) else None,
-        })
-
-    # ── Llamadas que llegaron a agentes con anexo ──────────────────────────────
-    for orig_cid, ag_grp in (df_ag.groupby("original_callid") if not df_ag.empty else []):
-        trunk = trn_by_ref.get(orig_cid)
+            "fecha":detect_time.date() if pd.notna(detect_time) else None})
+    for orig_cid,ag_grp in (df_ag.groupby("original_callid") if not df_ag.empty else []):
+        trunk=trn_by_ref.get(orig_cid)
         if trunk is not None:
-            ani_cliente  = str(trunk.get("ani","—") or "—")
-            dnis_marcado = str(trunk.get("dnis","") or "")
-            detect_time  = min(trunk.get("detect_time"), ag_grp["detect_time"].min())
+            ani_cliente=str(trunk.get("ani","—") or "—"); detect_time=min(trunk.get("detect_time"),ag_grp["detect_time"].min())
         else:
-            ani_val      = ag_grp["ani"].replace("",pd.NA).dropna()
-            ani_cliente  = str(ani_val.iloc[0]) if not ani_val.empty else "—"
-            dnis_marcado = ""
-            detect_time  = ag_grp["detect_time"].min()
-
-        ring_total = int(ag_grp["ring_time"].apply(lambda x: max(0,int(x or 0))).sum())
-        n_intentos = len(ag_grp)
-        contestado = ag_grp[ag_grp["duration"] > 0]
-
+            ani_val=ag_grp["ani"].replace("",pd.NA).dropna(); ani_cliente=str(ani_val.iloc[0]) if not ani_val.empty else "—"
+            detect_time=ag_grp["detect_time"].min()
+        ring_total=int(ag_grp["ring_time"].apply(lambda x: max(0,int(x or 0))).sum()); n_intentos=len(ag_grp)
+        contestado=ag_grp[ag_grp["duration"]>0]
         if not contestado.empty:
-            best = contestado.loc[contestado["duration"].idxmax()]
-            _append(orig_cid, detect_time, ani_cliente, True, str(best["dnis_user"]),
-                    int(best["duration"]), ring_total, n_intentos,
-                    str(best.get("end_reason","OK") or "OK"), "atendida",
-                    dnis_marcado=dnis_marcado)
+            best=contestado.loc[contestado["duration"].idxmax()]
+            _append(orig_cid,detect_time,ani_cliente,True,str(best["dnis_user"]),int(best["duration"]),ring_total,n_intentos,str(best.get("end_reason","OK") or "OK"),"atendida")
         else:
-            ers   = ag_grp["end_reason"].replace("",pd.NA).dropna()
-            top_er = ers.mode().iloc[0] if not ers.empty else "UNKNOWN"
-            if top_er=="CANCELLED":   esc="colgó_timbrando"
+            ers=ag_grp["end_reason"].replace("",pd.NA).dropna(); top_er=ers.mode().iloc[0] if not ers.empty else "UNKNOWN"
+            if top_er=="CANCELLED": esc="colgó_timbrando"
             elif top_er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE"): esc="agente_no_disponible"
             elif top_er=="NO_ANSWER": esc="múltiples_no_respuesta" if n_intentos>1 else "no_respondió"
-            elif top_er=="DECLINE":   esc="rechazada"
-            else:                     esc="perdida"
-            ag_timbrando = None
+            elif top_er=="DECLINE": esc="rechazada"
+            else: esc="perdida"
+            ag_timbrando=None
             if esc=="colgó_timbrando":
-                ringing = ag_grp.sort_values("detect_time", ascending=False)
-                ag_timbrando = str(ringing.iloc[0]["dnis_user"]) if not ringing.empty else None
-            _append(orig_cid, detect_time, ani_cliente, False, None, 0, ring_total, n_intentos,
-                    top_er, esc, agente_timbrando=ag_timbrando,
-                    espera_usuario=ring_total, dnis_marcado=dnis_marcado)
-
-    # ── Troncos sin agente asignado ────────────────────────────────────────────
-    for _, trn_row in (df_trn.iterrows() if not df_trn.empty else []):
-        ref_cid = str(trn_row.get("ref_callid","")).strip()
+                ringing=ag_grp.sort_values("detect_time",ascending=False)
+                ag_timbrando=str(ringing.iloc[0]["dnis_user"]) if not ringing.empty else None
+            _append(orig_cid,detect_time,ani_cliente,False,None,0,ring_total,n_intentos,top_er,esc,agente_timbrando=ag_timbrando,espera_usuario=ring_total)
+    for _,trn_row in (df_trn.iterrows() if not df_trn.empty else []):
+        ref_cid=str(trn_row.get("ref_callid","")).strip()
         if ref_cid in ag_orig_set: continue
-        orig_cid    = str(trn_row.get("original_callid","")).strip()
-        detect_time = trn_row.get("detect_time")
-        ani_cliente = str(trn_row.get("ani","—") or "—")
-        dnis_marcado= str(trn_row.get("dnis","") or "")
-        er  = str(trn_row.get("end_reason","UNKNOWN") or "UNKNOWN")
-        # Llamadas del canal USA → atendidas por Victor Macedo (sin anexo)
-        dids_cfg = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
-        usa_dids = {k for k,v in dids_cfg.items() if "Unidos" in v.get("pais","")}
-        if dnis_marcado in usa_dids:
-            dur = int(trn_row.get("duration",0) or 0)
-            atendida = dur > 0
-            esc = "atendida" if atendida else (
-                "colgó_en_ivr" if er=="CANCELLED" else
-                "agente_no_disponible" if er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE") else
-                "no_enrutada")
-            ag_id_usa = next((k for k,v in st.session_state.cfg_agentes.items()
-                              if v.get("sin_anexo") and v.get("activo",True)), None)
-            _append(orig_cid, detect_time, ani_cliente, atendida,
-                    ag_id_usa, dur, 0, 1, er, esc, dnis_marcado=dnis_marcado)
-        else:
-            esc = ("colgó_en_ivr" if er=="CANCELLED" else
-                   "agente_no_disponible" if er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE") else
-                   "no_enrutada")
-            _append(orig_cid, detect_time, ani_cliente, False, None, 0, 0, 0,
-                    er, esc, dnis_marcado=dnis_marcado)
-
+        orig_cid=str(trn_row.get("original_callid","")).strip()
+        detect_time=trn_row.get("detect_time"); ani_cliente=str(trn_row.get("ani","—") or "—")
+        er=str(trn_row.get("end_reason","UNKNOWN") or "UNKNOWN")
+        esc="colgó_en_ivr" if er=="CANCELLED" else "agente_no_disponible" if er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE") else "no_enrutada"
+        _append(orig_cid,detect_time,ani_cliente,False,None,0,0,0,er,esc)
     if not resultados: return pd.DataFrame()
-    df = pd.DataFrame(resultados)
-
-    def _safe_turno(row):
-        try:
-            did = str(row.get("dnis_marcado","")).strip()
-            did = None if did in ("","nan","None") else did
-            return agente_de_turno(row["detect_time"], did)
-        except: return "Sin turno"
-
-    df["agente_turno"] = df.apply(_safe_turno, axis=1)
-
+    df=pd.DataFrame(resultados); df["agente_turno"]=df["detect_time"].apply(agente_de_turno)
     def calc_resp(r):
         if r["agente_turno"] in AGENTES_SIN_ID: return r["agente_turno"]
         return r["agente"] if r["atendida"] else r["agente_turno"]
-
-    df["responsable"] = df.apply(calc_resp, axis=1)
-    df.loc[df["agente_turno"].isin(AGENTES_SIN_ID), ["atendida","agente"]] = [False,"Sin atender"]
+    df["responsable"]=df.apply(calc_resp,axis=1)
+    df.loc[df["agente_turno"].isin(AGENTES_SIN_ID),["atendida","agente"]]=[False,"Sin atender"]
     return df
 
-# ── Procesamiento general ──────────────────────────────────────────────────────
 def procesar(df_raw):
-    if df_raw is None or df_raw.empty: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    CENTRAL_ID   = get_central_id()
-    todos_agentes = set(get_agentes().keys())
-    df = df_raw.copy()
-    for col in ["duration","ring_time"]:
-        df[col] = pd.to_numeric(df.get(col,0), errors="coerce").fillna(0).astype(int)
+    if df_raw is None or df_raw.empty: return pd.DataFrame(),pd.DataFrame(),pd.DataFrame()
+    CENTRAL_ID=get_central_id(); todos_agentes=set(get_agentes().keys())
+    df=df_raw.copy()
+    for col in ["duration","ring_time"]: df[col]=pd.to_numeric(df.get(col,0),errors="coerce").fillna(0).astype(int)
     for col in ["detect_time","connect_time","disconnect_time"]:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col].replace("",None), errors="coerce")
+        if col in df.columns: df[col]=pd.to_datetime(df[col].replace("",None),errors="coerce")
     for col in ["ani_user","dnis_user","ref_callid","original_callid"]:
-        if col in df.columns: df[col] = df[col].astype(str).str.strip()
-    if "type" not in df.columns: df["type"] = ""
-    df["type"] = df["type"].astype(str).replace({"None":"","nan":"","null":"","<NA>":""})
-    mask_null = df["type"] == ""
+        if col in df.columns: df[col]=df[col].astype(str).str.strip()
+    if "type" not in df.columns: df["type"]=""
+    df["type"]=df["type"].astype(str).replace({"None":"","nan":"","null":"","<NA>":""})
+    mask_null=df["type"]==""
     if mask_null.any():
-        df.loc[mask_null & df["dnis_user"].isin(todos_agentes), "type"] = "incoming"
-        df.loc[mask_null & df["ani_user"].isin(get_agentes_con_anexo().keys()) &
-               ~df["dnis_user"].isin(todos_agentes), "type"] = "outgoing"
-        df.loc[df["type"]=="", "type"] = "incoming"
-
-    nums_excluidos = {norm_num(n) for n in get_nums_excluidos()}
-    mask_sal = ((df["type"]=="outgoing") &
-                (df["ani_user"].isin(get_agentes_con_anexo().keys())) &
-                (~df["dnis"].astype(str).str.startswith("833")))
-    df_sal = df[mask_sal].copy()
+        df.loc[mask_null&df["dnis_user"].isin(todos_agentes),"type"]="incoming"
+        df.loc[mask_null&df["ani_user"].isin(get_agentes_sin_central().keys())&~df["dnis_user"].isin(todos_agentes),"type"]="outgoing"
+        df.loc[df["type"]=="","type"]="incoming"
+    nums_excluidos={norm_num(n) for n in get_nums_excluidos()}
+    mask_sal=(df["type"]=="outgoing")&(df["ani_user"].isin(get_agentes_sin_central().keys()))&(~df["dnis"].astype(str).str.startswith("833"))
+    df_sal=df[mask_sal].copy()
     if nums_excluidos and "dnis" in df_sal.columns:
-        df_sal = df_sal[~df_sal["dnis"].apply(lambda x: norm_num(str(x))).isin(nums_excluidos)]
-    df_sal["agente"]         = df_sal["ani_user"].map(get_agentes())
-    df_sal["numero_cliente"] = df_sal["dnis"].astype(str)
-    df_sal["atendida"]       = df_sal["duration"] > 0
-    df_sal["hora"]           = df_sal["detect_time"].dt.hour
-    df_sal["fecha"]          = df_sal["detect_time"].dt.date
-    df_sal["end_reason_es"]  = df_sal["end_reason"].map(END_REASONS).fillna(df_sal["end_reason"])
+        df_sal=df_sal[~df_sal["dnis"].apply(lambda x: norm_num(str(x))).isin(nums_excluidos)]
+    df_sal["agente"]=df_sal["ani_user"].map(get_agentes()); df_sal["numero_cliente"]=df_sal["dnis"].astype(str)
+    df_sal["atendida"]=df_sal["duration"]>0; df_sal["hora"]=df_sal["detect_time"].dt.hour
+    df_sal["fecha"]=df_sal["detect_time"].dt.date; df_sal["end_reason_es"]=df_sal["end_reason"].map(END_REASONS).fillna(df_sal["end_reason"])
+    df_ent=clasificar_entrantes(df[df["type"]=="incoming"].copy())
+    return df_ent,df_sal,df
 
-    df_ent = clasificar_entrantes(df[df["type"]=="incoming"].copy())
-    return df_ent, df_sal, df
-
-# ── Cumplimiento callbacks ─────────────────────────────────────────────────────
-def calcular_cumplimiento(df_ent, df_sal):
+def calcular_cumplimiento(df_ent,df_sal):
     if df_ent is None or df_ent.empty or "escenario" not in df_ent.columns: return pd.DataFrame()
-    ventana  = pd.Timedelta(minutes=st.session_state.cfg_ventana_cb)
-    perdidas = df_ent[(df_ent["atendida"]==False) &
-                      (df_ent["escenario"].isin(ESC_RESPONSABLE))].copy().sort_values("detect_time")
+    ventana=pd.Timedelta(minutes=st.session_state.cfg_ventana_cb)
+    perdidas=df_ent[(df_ent["atendida"]==False)&(df_ent["escenario"].isin(ESC_RESPONSABLE))].copy().sort_values("detect_time")
     if perdidas.empty: return pd.DataFrame()
-    df_sal2 = df_sal.copy() if not df_sal.empty else pd.DataFrame()
-    df_ent2 = df_ent.copy()
-    if not df_sal2.empty and "numero_cliente" in df_sal2.columns:
-        df_sal2["_num"] = df_sal2["numero_cliente"].apply(norm_num)
-    if "numero_cliente" in df_ent2.columns:
-        df_ent2["_num"] = df_ent2["numero_cliente"].apply(norm_num)
-    resultados = []
-    for _, row in perdidas.iterrows():
-        t0 = row["detect_time"]
+    df_sal2=df_sal.copy() if not df_sal.empty else pd.DataFrame()
+    df_ent2=df_ent.copy()
+    if not df_sal2.empty and "numero_cliente" in df_sal2.columns: df_sal2["_num"]=df_sal2["numero_cliente"].apply(norm_num)
+    if "numero_cliente" in df_ent2.columns: df_ent2["_num"]=df_ent2["numero_cliente"].apply(norm_num)
+    resultados=[]
+    for _,row in perdidas.iterrows():
+        t0=row["detect_time"]
         if pd.isna(t0): continue
-        num = norm_num(row["numero_cliente"]); t_lim = t0 + ventana
-        cb_sal = pd.DataFrame()
+        num=norm_num(row["numero_cliente"]); t_lim=t0+ventana
+        cb_sal=pd.DataFrame()
         if not df_sal2.empty and "detect_time" in df_sal2.columns:
-            cb_sal = df_sal2[(df_sal2["_num"]==num)&(df_sal2["detect_time"]>t0)&
-                             (df_sal2["detect_time"]<=t_lim)&(df_sal2["atendida"]==True)]
-        cb_ent = pd.DataFrame()
+            cb_sal=df_sal2[(df_sal2["_num"]==num)&(df_sal2["detect_time"]>t0)&(df_sal2["detect_time"]<=t_lim)&(df_sal2["atendida"]==True)]
+        cb_ent=pd.DataFrame()
         if "detect_time" in df_ent2.columns:
-            cb_ent = df_ent2[(df_ent2["_num"]==num)&(df_ent2["detect_time"]>t0)&
-                             (df_ent2["detect_time"]<=t_lim)&(df_ent2["atendida"]==True)]
+            cb_ent=df_ent2[(df_ent2["_num"]==num)&(df_ent2["detect_time"]>t0)&(df_ent2["detect_time"]<=t_lim)&(df_ent2["atendida"]==True)]
         if not cb_sal.empty:
-            tipo="📞 Agente llamó"; t_cb=cb_sal["detect_time"].min()
-            ag_cb=cb_sal.iloc[0].get("agente","—"); seg=int((t_cb-t0).total_seconds())
+            tipo="📞 Agente llamó"; t_cb=cb_sal["detect_time"].min(); ag_cb=cb_sal.iloc[0].get("agente","—"); seg=int((t_cb-t0).total_seconds())
         elif not cb_ent.empty:
-            tipo="↩️ Cliente volvió"; t_cb=cb_ent["detect_time"].min()
-            ag_cb=cb_ent.iloc[0].get("agente","—"); seg=int((t_cb-t0).total_seconds())
+            tipo="↩️ Cliente volvió"; t_cb=cb_ent["detect_time"].min(); ag_cb=cb_ent.iloc[0].get("agente","—"); seg=int((t_cb-t0).total_seconds())
         else:
             tipo="❌ Sin resolución"; ag_cb="—"; seg=None
-        resultados.append({"Fecha/Hora":t0,"Número":row["numero_cliente"],
-            "Responsable":row.get("responsable","—"),"Escenario":esc_es(row.get("escenario","")),
-            "Resolución":tipo,
+        resultados.append({"Fecha/Hora":t0,"Número":row["numero_cliente"],"Responsable":row.get("responsable","—"),
+            "Escenario":esc_es(row.get("escenario","")),"Resolución":tipo,
             "Tiempo respuesta":fmt_dur(seg) if seg is not None else f"> {st.session_state.cfg_ventana_cb} min",
             "Agente resolvió":ag_cb,"Cumplimiento":tipo!="❌ Sin resolución","_seg":seg})
     return pd.DataFrame(resultados)
 
 # ── Panel configuración ────────────────────────────────────────────────────────
 def render_config(c):
-    bg=c["card"]; txt=c["text"]; muted=c["muted"]; brd=c["border"]
-    st.markdown(f"<h2 style='color:{txt}'>⚙️ Configuración</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 style='color:{c['text']}'>⚙️ Configuración</h2>",unsafe_allow_html=True)
     st.markdown("---")
-    cfg_tabs = st.tabs(["🔢 Agentes","📅 Turnos","🚫 Excluidos","📞 Canales","⚙️ General"])
-
+    cfg_tabs=st.tabs(["🔢 Agentes","📅 Turnos","🚫 Números excluidos","⚙️ General"])
     with cfg_tabs[0]:
         st.markdown("#### Gestión de agentes")
-        for kid, val in list(st.session_state.cfg_agentes.items()):
-            c1,c2,c3,c4 = st.columns([1.2,2,.6,.5])
-            with c1: st.text_input("ID", value=kid, disabled=True, key=f"ag_id_{kid}")
-            with c2:
-                nn = st.text_input("Nombre", value=val["nombre"], key=f"ag_nom_{kid}")
-                st.session_state.cfg_agentes[kid]["nombre"] = nn
-            with c3:
-                act = st.checkbox("Activo", value=val.get("activo",True), key=f"ag_act_{kid}",
-                                  disabled=val.get("es_central",False))
-                st.session_state.cfg_agentes[kid]["activo"] = act
-            with c4:
+        for kid,val in list(st.session_state.cfg_agentes.items()):
+            col1,col2,col3,col4=st.columns([1.2,2,.6,.5])
+            with col1: st.text_input("ID",value=kid,disabled=True,key=f"ag_id_{kid}")
+            with col2:
+                nn=st.text_input("Nombre",value=val["nombre"],key=f"ag_nom_{kid}")
+                st.session_state.cfg_agentes[kid]["nombre"]=nn
+            with col3:
+                act=st.checkbox("Activo",value=val.get("activo",True),key=f"ag_act_{kid}",disabled=val.get("es_central",False))
+                st.session_state.cfg_agentes[kid]["activo"]=act
+            with col4:
                 if not val.get("es_central",False):
-                    if st.button("🗑", key=f"ag_del_{kid}"):
+                    if st.button("🗑",key=f"ag_del_{kid}"):
                         del st.session_state.cfg_agentes[kid]; st.rerun()
         st.markdown("---"); st.markdown("**Agregar agente**")
-        na1,na2,na3,na4 = st.columns([1.4,2,1,1])
-        with na1: new_id  = st.text_input("ID / Anexo", key="new_ag_id",  placeholder="8668XXX ó SIN_ANEXO")
-        with na2: new_nom = st.text_input("Nombre",     key="new_ag_nom", placeholder="Nombre Apellido")
-        with na3: new_sa  = st.checkbox("Sin anexo (directo)",   key="new_ag_sa")
-        with na4:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("➕ Agregar", key="btn_add_ag"):
+        na1,na2,na3=st.columns([1.5,2.5,1])
+        with na1: new_id=st.text_input("ID (endpoint)",key="new_ag_id",placeholder="8668XXX")
+        with na2: new_nom=st.text_input("Nombre",key="new_ag_nom",placeholder="Nombre Apellido")
+        with na3:
+            st.markdown("<br>",unsafe_allow_html=True)
+            if st.button("➕ Agregar",key="btn_add_ag"):
                 if new_id and new_nom and new_id not in st.session_state.cfg_agentes:
-                    st.session_state.cfg_agentes[new_id] = {
-                        "nombre":new_nom,"activo":True,"es_central":False,"sin_anexo":new_sa}
-                    st.rerun()
-
+                    st.session_state.cfg_agentes[new_id]={"nombre":new_nom,"activo":True,"es_central":False}; st.rerun()
     with cfg_tabs[1]:
         st.markdown("#### Horario de turnos")
-        st.caption("Los turnos con DID específico se usan para canales internacionales (ej. USA).")
-        DIAS_MAP = {0:"Lun",1:"Mar",2:"Mié",3:"Jue",4:"Vie",5:"Sáb",6:"Dom"}
-        for i, t in enumerate(st.session_state.cfg_turnos):
-            h_fin_str = f"{t['h_fin']}h" if t['h_fin']<=24 else f"{t['h_fin']-24}h(+1)"
-            dids_lbl  = ", ".join(t.get("dids") or []) or "Todos"
-            with st.expander(f"Turno {i+1}: {t['agente']} · {t['h_ini']}h–{h_fin_str} · DIDs: {dids_lbl} {'✅' if t.get('activo',True) else '⏸'}"):
-                tc1,tc2,tc3,tc4 = st.columns([2,1,1,1])
+        DIAS_MAP={0:"Lun",1:"Mar",2:"Mié",3:"Jue",4:"Vie",5:"Sáb",6:"Dom"}
+        for i,t in enumerate(st.session_state.cfg_turnos):
+            h_fin_str=f"{t['h_fin']}h" if t['h_fin']<=24 else f"{t['h_fin']-24}h(+1)"
+            with st.expander(f"Turno {i+1}: {t['agente']} · {t['h_ini']}h–{h_fin_str} {'✅' if t.get('activo',True) else '⏸'}"):
+                tc1,tc2,tc3,tc4=st.columns([2,1,1,1])
                 with tc1:
-                    ag_nombres = [v["nombre"] for k,v in st.session_state.cfg_agentes.items() if not v.get("es_central")]
-                    idx = ag_nombres.index(t["agente"]) if t["agente"] in ag_nombres else 0
-                    t["agente"] = st.selectbox("Agente", ag_nombres, index=idx, key=f"t_ag_{i}")
-                with tc2: t["h_ini"] = st.number_input("H. inicio", 0,30, t["h_ini"], key=f"t_hi_{i}")
-                with tc3: t["h_fin"] = st.number_input("H. fin",    0,30, t["h_fin"], key=f"t_hf_{i}")
-                with tc4: t["activo"]= st.checkbox("Activo", value=t.get("activo",True), key=f"t_act_{i}")
-                dias_sel = st.multiselect("Días", list(DIAS_MAP.keys()),
-                    format_func=lambda x: DIAS_MAP[x], default=t.get("dias",[]), key=f"t_dias_{i}")
-                t["dias"] = dias_sel
-                dids_str = st.text_input("DIDs exclusivos (separados por coma, vacío = todos)",
-                    value=", ".join(t.get("dids") or []), key=f"t_dids_{i}")
-                t["dids"] = [d.strip() for d in dids_str.split(",") if d.strip()]
-                if st.button(f"🗑 Eliminar", key=f"t_del_{i}"):
+                    ag_nombres=[v["nombre"] for k,v in st.session_state.cfg_agentes.items() if not v.get("es_central")]
+                    idx=ag_nombres.index(t["agente"]) if t["agente"] in ag_nombres else 0
+                    t["agente"]=st.selectbox("Agente",ag_nombres,index=idx,key=f"t_ag_{i}")
+                with tc2: t["h_ini"]=st.number_input("H. inicio",0,30,t["h_ini"],key=f"t_hi_{i}")
+                with tc3: t["h_fin"]=st.number_input("H. fin(30=6am)",0,30,t["h_fin"],key=f"t_hf_{i}")
+                with tc4: t["activo"]=st.checkbox("Activo",value=t.get("activo",True),key=f"t_act_{i}")
+                dias_sel=st.multiselect("Días",list(DIAS_MAP.keys()),format_func=lambda x:DIAS_MAP[x],default=t["dias"],key=f"t_dias_{i}")
+                t["dias"]=dias_sel
+                if st.button(f"🗑 Eliminar turno {i+1}",key=f"t_del_{i}"):
                     st.session_state.cfg_turnos.pop(i); st.rerun()
         if st.button("➕ Nuevo turno"):
-            ag_list = [v["nombre"] for k,v in st.session_state.cfg_agentes.items() if not v.get("es_central")]
-            st.session_state.cfg_turnos.append({
-                "dias":[0,1,2,3,4],"h_ini":8,"h_fin":17,
-                "agente":ag_list[0] if ag_list else "","activo":True,"dids":[]})
-            st.rerun()
-
+            st.session_state.cfg_turnos.append({"dias":[0,1,2,3,4],"h_ini":8,"h_fin":17,
+                "agente":list(get_agentes_sin_central().values())[0] if get_agentes_sin_central() else "","activo":True}); st.rerun()
     with cfg_tabs[2]:
         st.markdown("#### Números excluidos de métricas")
-        st.session_state.cfg_modo_demo = st.toggle(
-            "🧪 Modo demo (incluir todos los números)",
-            value=st.session_state.cfg_modo_demo, key="toggle_demo")
+        st.session_state.cfg_modo_demo=st.toggle("🧪 Modo demo (incluir todos los números)",value=st.session_state.cfg_modo_demo,key="toggle_demo")
         st.markdown("---")
-        for i, num in enumerate(list(st.session_state.cfg_nums_excluidos)):
-            nc1,nc2 = st.columns([4,1])
+        for i,num in enumerate(list(st.session_state.cfg_nums_excluidos)):
+            nc1,nc2=st.columns([4,1])
             with nc1:
-                nuevo = st.text_input(f"Número {i+1}", value=num, key=f"exc_num_{i}")
-                st.session_state.cfg_nums_excluidos[i] = nuevo
+                nuevo=st.text_input(f"Número {i+1}",value=num,key=f"exc_num_{i}")
+                st.session_state.cfg_nums_excluidos[i]=nuevo
             with nc2:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🗑", key=f"exc_del_{i}"):
-                    st.session_state.cfg_nums_excluidos.pop(i); st.rerun()
-        nc1,nc2 = st.columns([4,1])
-        with nc1: nuevo_exc = st.text_input("Agregar número", placeholder="519XXXXXXXX", key="new_exc")
+                st.markdown("<br>",unsafe_allow_html=True)
+                if st.button("🗑",key=f"exc_del_{i}"): st.session_state.cfg_nums_excluidos.pop(i); st.rerun()
+        nc1,nc2=st.columns([4,1])
+        with nc1: nuevo_exc=st.text_input("Agregar número",placeholder="519XXXXXXXX",key="new_exc")
         with nc2:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("➕", key="btn_add_exc"):
+            st.markdown("<br>",unsafe_allow_html=True)
+            if st.button("➕",key="btn_add_exc"):
                 if nuevo_exc and nuevo_exc not in st.session_state.cfg_nums_excluidos:
                     st.session_state.cfg_nums_excluidos.append(nuevo_exc); st.rerun()
-
     with cfg_tabs[3]:
-        st.markdown("#### Canales / números DID")
-        st.caption("Define los números DID y su país. Permite filtrar el dashboard por canal.")
-        for did_k, did_v in list(st.session_state.cfg_dids.items()):
-            dc1,dc2,dc3,dc4,dc5 = st.columns([1.5,1.8,.6,.5,.5])
-            with dc1: st.text_input("DID", value=did_k, disabled=True, key=f"did_id_{did_k}")
-            with dc2:
-                np_ = st.text_input("País", value=did_v["pais"], key=f"did_pais_{did_k}")
-                st.session_state.cfg_dids[did_k]["pais"] = np_
-            with dc3:
-                bf_ = st.text_input("🏳", value=did_v.get("bandera","🌐"), key=f"did_bf_{did_k}")
-                st.session_state.cfg_dids[did_k]["bandera"] = bf_
-            with dc4:
-                act_ = st.checkbox("Activo", value=did_v.get("activo",True), key=f"did_act_{did_k}")
-                st.session_state.cfg_dids[did_k]["activo"] = act_
-            with dc5:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🗑", key=f"did_del_{did_k}"):
-                    del st.session_state.cfg_dids[did_k]; st.rerun()
-        st.markdown("---"); st.markdown("**Agregar nuevo DID**")
-        nd1,nd2,nd3,nd4 = st.columns([1.5,1.8,.6,.8])
-        with nd1: new_dn = st.text_input("Número DID", placeholder="5116429375", key="new_did_num")
-        with nd2: new_dp = st.text_input("País", placeholder="Perú",             key="new_did_pais")
-        with nd3: new_db = st.text_input("Bandera", placeholder="🇵🇪",           key="new_did_bf")
-        with nd4:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("➕ Agregar", key="btn_add_did"):
-                if new_dn and new_dn not in st.session_state.cfg_dids:
-                    st.session_state.cfg_dids[new_dn] = {"pais":new_dp,"bandera":new_db or "🌐","activo":True}
-                    st.rerun()
-
-    with cfg_tabs[4]:
         st.markdown("#### Parámetros generales")
-        st.session_state.cfg_ventana_cb = st.slider(
-            "Ventana de cumplimiento (min)", 1, 15, st.session_state.cfg_ventana_cb)
+        st.session_state.cfg_ventana_cb=st.slider("Ventana de cumplimiento (min)",1,15,st.session_state.cfg_ventana_cb)
         st.markdown("---")
         if st.button("⚠️ Restablecer a valores por defecto"):
-            st.session_state.cfg_agentes        = json.loads(json.dumps(DEFAULT_AGENTES))
-            st.session_state.cfg_turnos         = json.loads(json.dumps(DEFAULT_TURNOS))
-            st.session_state.cfg_nums_excluidos = list(DEFAULT_NUMS_EXCLUIDOS)
-            st.session_state.cfg_ventana_cb     = 5
-            st.session_state.cfg_modo_demo      = False
-            st.session_state.cfg_dids           = json.loads(json.dumps(DEFAULT_DIDS))
+            st.session_state.cfg_agentes=json.loads(json.dumps(DEFAULT_AGENTES))
+            st.session_state.cfg_turnos=json.loads(json.dumps(DEFAULT_TURNOS))
+            st.session_state.cfg_nums_excluidos=list(DEFAULT_NUMS_EXCLUIDOS)
+            st.session_state.cfg_ventana_cb=5; st.session_state.cfg_modo_demo=False
             save_config(); st.success("Restablecido"); st.rerun()
-
     st.markdown("---")
-    cs, cc = st.columns(2)
+    cs,cc=st.columns(2)
     with cs:
-        if st.button("💾 Guardar", type="primary", use_container_width=True):
+        if st.button("💾 Guardar",type="primary",use_container_width=True):
             if save_config():
                 st.success("✅ Guardado"); time.sleep(1)
-                st.session_state.show_config = False; st.rerun()
+                st.session_state.show_config=False; st.rerun()
     with cc:
-        if st.button("✖ Cancelar", use_container_width=True):
-            _ag,_tu,_ne,_vc,_md,_di = load_config()
+        if st.button("✖ Cancelar",use_container_width=True):
+            _ag,_tu,_ne,_vc,_md=load_config()
             st.session_state.cfg_agentes=_ag; st.session_state.cfg_turnos=_tu
             st.session_state.cfg_nums_excluidos=_ne; st.session_state.cfg_ventana_cb=_vc
-            st.session_state.cfg_modo_demo=_md; st.session_state.cfg_dids=_di
-            st.session_state.show_config = False; st.rerun()
+            st.session_state.cfg_modo_demo=_md; st.session_state.show_config=False; st.rerun()
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
-hoy_lima = now_lima()
+hoy_lima=now_lima()
 with st.sidebar:
     st.markdown("## 🎯 Supervisor · Soporte")
     is_light = st.toggle("☀️ Modo claro", value=st.session_state.theme=="light", key="theme_toggle")
     st.session_state.theme = "light" if is_light else "dark"
     c = T[st.session_state.theme]
     if st.session_state.cfg_modo_demo:
-        st.markdown("<div style='background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.4);"
-                    "border-radius:6px;padding:6px 10px;text-align:center;font-size:11px;"
-                    "color:#EAB308;margin-bottom:8px'>🧪 MODO DEMO</div>", unsafe_allow_html=True)
-    _card_c = c["card"]; _brd_c = c["border"]; _pri_c = c["primary"]; _txt_c = c["text"]; _m2_c = c["muted2"]
-    st.markdown(
-        "<div style='background:" + _card_c + ";border:1px solid " + _brd_c + ";border-radius:8px;"
-        "padding:10px 12px;margin-bottom:8px'>"
-        "<div style='color:" + _m2_c + ";font-size:10px;font-family:JetBrains Mono,monospace'>CUENTA</div>"
-        "<div style='color:" + _pri_c + ";font-size:13px;font-family:JetBrains Mono,monospace;margin-top:2px'>" + _U + "</div></div>",
-        unsafe_allow_html=True)
-    if st.button("⚙️ Configuración", use_container_width=True):
-        st.session_state.show_config = not st.session_state.show_config; st.rerun()
+        st.markdown(f"<div style='background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.4);border-radius:6px;padding:6px 10px;text-align:center;font-size:11px;color:#EAB308;margin-bottom:8px'>🧪 MODO DEMO</div>",unsafe_allow_html=True)
+    st.markdown(f"""<div style='background:{c['card']};border:1px solid {c['border']};border-radius:8px;padding:10px 12px;margin-bottom:8px'>
+        <div style='color:{c['muted2']};font-size:10px;font-family:JetBrains Mono,monospace'>CUENTA</div>
+        <div style='color:{c['primary']};font-size:13px;font-family:JetBrains Mono,monospace;margin-top:2px'>{_U}</div></div>""",unsafe_allow_html=True)
+    if st.button("⚙️ Configuración",use_container_width=True):
+        st.session_state.show_config=not st.session_state.show_config; st.rerun()
     st.markdown("---")
-    fi = st.date_input("Desde",       value=(hoy_lima-timedelta(days=1)).date())
-    hi = st.time_input("Hora inicio",  value=datetime.strptime("00:00","%H:%M").time())
-    ff = st.date_input("Hasta",        value=hoy_lima.date())
-    hf = st.time_input("Hora fin",     value=datetime.strptime("23:59","%H:%M").time())
+    fi=st.date_input("Desde",      value=(hoy_lima-timedelta(days=1)).date())
+    hi=st.time_input("Hora inicio", value=datetime.strptime("00:00","%H:%M").time())
+    ff=st.date_input("Hasta",       value=hoy_lima.date())
+    hf=st.time_input("Hora fin",    value=datetime.strptime("23:59","%H:%M").time())
     st.markdown("---")
-    c1s,c2s = st.columns(2)
-    with c1s: btn_ok  = st.button("⟳ Consultar", type="primary", use_container_width=True)
-    with c2s: btn_hoy = st.button("Hoy",           use_container_width=True)
+    c1s,c2s=st.columns(2)
+    with c1s: btn_ok =st.button("⟳ Consultar",type="primary",use_container_width=True)
+    with c2s: btn_hoy=st.button("Hoy",use_container_width=True)
     st.markdown("---")
-    live_mode = st.toggle("🔴 Modo en vivo", value=False)
-    intervalo = st.slider("Refrescar cada (seg)", 5, 60, 15) if live_mode else 15
+    live_mode=st.toggle("🔴 Modo en vivo",value=False)
+    intervalo=st.slider("Refrescar cada (seg)",5,60,15) if live_mode else 15
 
-# CSS del tema
-st.markdown(get_css(c), unsafe_allow_html=True)
+# Inyectar CSS del tema
+st.markdown(get_css(c),unsafe_allow_html=True)
 
-if st.session_state.show_config:
-    render_config(c); st.stop()
+if st.session_state.show_config: render_config(c); st.stop()
 
-# ── Funciones de carga ─────────────────────────────────────────────────────────
-def cargar(df_raw, label):
-    df_e, df_s, df_r = procesar(df_raw)
-    st.session_state.update(df_ent=df_e, df_sal=df_s, df_raw=df_r,
-                             df_live_raw=None, label=label, error=None, loaded=True)
+def cargar(df_raw,label):
+    df_e,df_s,df_r=procesar(df_raw)
+    st.session_state.update(df_ent=df_e,df_sal=df_s,df_raw=df_r,df_live_raw=None,label=label,error=None,loaded=True)
+def cargar_live(df_raw,label):
+    st.session_state.update(df_live_raw=df_raw,label=label,error=None,loaded=True)
 
-def cargar_live(df_raw, label):
-    st.session_state.update(df_live_raw=df_raw, label=label, error=None, loaded=True)
-
-# ── Carga de datos ─────────────────────────────────────────────────────────────
+# ── Carga ──────────────────────────────────────────────────────────────────────
 if live_mode:
-    df_raw_live, err = fetch_cdrs(live=True)
+    df_raw_live,err=fetch_cdrs(live=True)
     if err: st.error(f"⚠ {err}"); st.stop()
-    cargar_live(df_raw_live, f"EN VIVO · {hoy_lima.strftime('%H:%M:%S')}")
+    cargar_live(df_raw_live,f"EN VIVO · {hoy_lima.strftime('%H:%M:%S')}")
 elif btn_hoy or (not st.session_state.loaded and not st.session_state.auto_loaded):
-    ds = hoy_lima.replace(hour=0,minute=0,second=0,microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-    de = hoy_lima.strftime("%Y-%m-%d %H:%M:%S")
+    ds=hoy_lima.replace(hour=0,minute=0,second=0,microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    de=hoy_lima.strftime("%Y-%m-%d %H:%M:%S")
     with st.spinner("Cargando datos de hoy..."):
-        df_raw_h, err = fetch_cdrs(date_start=ds, date_end=de)
-    if err: st.session_state.error = err
-    else:
-        cargar(df_raw_h, f"Hoy {hoy_lima.strftime('%d/%m/%Y')} · desde las 00:00")
-        st.session_state.auto_loaded = True
+        df_raw_h,err=fetch_cdrs(date_start=ds,date_end=de)
+    if err: st.session_state.error=err
+    else: cargar(df_raw_h,f"Hoy {hoy_lima.strftime('%d/%m/%Y')} · desde las 00:00"); st.session_state.auto_loaded=True
 elif btn_ok:
-    ds = datetime.combine(fi,hi).strftime("%Y-%m-%d %H:%M:%S")
-    de = datetime.combine(ff,hf).strftime("%Y-%m-%d %H:%M:%S")
-    pb = st.progress(0, text="Iniciando…")
-    df_raw_h, err = fetch_cdrs(date_start=ds, date_end=de,
-                                progress_cb=lambda p,m: pb.progress(p, text=m))
+    ds=datetime.combine(fi,hi).strftime("%Y-%m-%d %H:%M:%S"); de=datetime.combine(ff,hf).strftime("%Y-%m-%d %H:%M:%S")
+    pb=st.progress(0,text="Iniciando…")
+    df_raw_h,err=fetch_cdrs(date_start=ds,date_end=de,progress_cb=lambda p,m: pb.progress(p,text=m))
     pb.empty()
-    if err: st.session_state.error = err
-    else:   cargar(df_raw_h, f"{fi.strftime('%d/%m')} – {ff.strftime('%d/%m/%Y')}")
+    if err: st.session_state.error=err
+    else: cargar(df_raw_h,f"{fi.strftime('%d/%m')} – {ff.strftime('%d/%m/%Y')}")
 
 if st.session_state.error: st.error(f"⚠ {st.session_state.error}"); st.stop()
 if not st.session_state.loaded: st.info("Configura el período y pulsa **Consultar**."); st.stop()
@@ -754,690 +532,504 @@ if not st.session_state.loaded: st.info("Configura el período y pulsa **Consult
 # MODO EN VIVO
 # ══════════════════════════════════════════════════════════════════════════════
 if live_mode:
-    df_live   = st.session_state.get("df_live_raw", pd.DataFrame())
-    lbl       = st.session_state.label
-    CENTRAL_ID= get_central_id()
-    if "notif_ids_vistos"   not in st.session_state: st.session_state.notif_ids_vistos   = set()
-    if "notif_sin_devolver" not in st.session_state: st.session_state.notif_sin_devolver = {}
-
-    _ahora = now_lima()
-    _hace6 = (_ahora-timedelta(minutes=6)).strftime("%Y-%m-%d %H:%M:%S")
-    _hasta = _ahora.strftime("%Y-%m-%d %H:%M:%S")
-    _debug_info = ""
+    df_live=st.session_state.get("df_live_raw",pd.DataFrame()); lbl=st.session_state.label
+    CENTRAL_ID=get_central_id()
+    if "notif_ids_vistos"   not in st.session_state: st.session_state.notif_ids_vistos=set()
+    if "notif_sin_devolver" not in st.session_state: st.session_state.notif_sin_devolver={}
+    _ahora=now_lima(); _hace6=(_ahora-timedelta(minutes=6)).strftime("%Y-%m-%d %H:%M:%S"); _hasta=_ahora.strftime("%Y-%m-%d %H:%M:%S")
+    _debug_info=""
     try:
-        _df_rec, _ = fetch_cdrs(date_start=_hace6, date_end=_hasta)
+        _df_rec,_=fetch_cdrs(date_start=_hace6,date_end=_hasta)
         if _df_rec is not None and not _df_rec.empty:
-            _df_rec_proc, _df_sal_rec, _ = procesar(_df_rec)
-            _debug_info = f"CDRs últimos 6 min: {len(_df_rec)} registros · {len(_df_rec_proc)} entrantes"
-        else:
-            _df_rec_proc, _df_sal_rec = pd.DataFrame(), pd.DataFrame()
-            _debug_info = "Sin CDRs en últimos 6 min"
-    except Exception as _ex:
-        _df_rec_proc, _df_sal_rec = pd.DataFrame(), pd.DataFrame()
-        _debug_info = f"Error: {_ex}"
-
-    _notif_js = []
+            _df_rec_proc,_df_sal_rec,_=procesar(_df_rec)
+            _debug_info=f"CDRs últimos 6 min: {len(_df_rec)} registros · {len(_df_rec_proc)} entrantes"
+        else: _df_rec_proc,_df_sal_rec=pd.DataFrame(),pd.DataFrame(); _debug_info="Sin CDRs en últimos 6 min"
+    except Exception as _ex: _df_rec_proc,_df_sal_rec=pd.DataFrame(),pd.DataFrame(); _debug_info=f"Error: {_ex}"
+    _notif_js=[]
     if not _df_rec_proc.empty and "escenario" in _df_rec_proc.columns:
-        for _, _row in _df_rec_proc[(_df_rec_proc["atendida"]==False) &
-                                    (_df_rec_proc["escenario"].isin(ESC_RESPONSABLE))].iterrows():
-            _cid  = str(_row.get("original_callid",""))
-            _num  = str(_row.get("numero_cliente","—"))
-            _esc  = esc_es(_row.get("escenario",""))
-            _resp = str(_row.get("responsable","—"))
-            _t    = _row.get("detect_time")
+        for _,_row in _df_rec_proc[(_df_rec_proc["atendida"]==False)&(_df_rec_proc["escenario"].isin(ESC_RESPONSABLE))].iterrows():
+            _cid=str(_row.get("original_callid","")); _num=str(_row.get("numero_cliente","—"))
+            _esc=esc_es(_row.get("escenario","")); _resp=str(_row.get("responsable","—")); _t=_row.get("detect_time")
             if _cid not in st.session_state.notif_ids_vistos:
                 st.session_state.notif_ids_vistos.add(_cid)
-                st.session_state.notif_sin_devolver[_cid] = {"num":_num,"esc":_esc,"resp":_resp,"t":_t}
-                st.toast(f"📵 {_num} ({_esc}) · {_resp}", icon="🔔")
-                _notif_js.append(f"Llamada perdida\\n{_num}\\n{_resp}")
-        _cb = calcular_cumplimiento(_df_rec_proc, _df_sal_rec)
+                st.session_state.notif_sin_devolver[_cid]={"num":_num,"esc":_esc,"resp":_resp,"t":_t}
+                st.toast(f"📵 {_num} ({_esc}) · {_resp}",icon="🔔"); _notif_js.append(f"Llamada perdida\\n{_num}\\n{_resp}")
+        _cb=calcular_cumplimiento(_df_rec_proc,_df_sal_rec)
         if not _cb.empty and "Cumplimiento" in _cb.columns:
-            for _, _r in _cb[_cb["Cumplimiento"]==True].iterrows():
-                _n = norm_num(str(_r.get("Número","")))
-                for _k, _v in list(st.session_state.notif_sin_devolver.items()):
-                    if norm_num(_v["num"]) == _n:
-                        del st.session_state.notif_sin_devolver[_k]; break
-        _vseg = st.session_state.cfg_ventana_cb * 60
-        for _cid, _info in list(st.session_state.notif_sin_devolver.items()):
-            _t = _info.get("t")
-            if _t is not None and pd.notna(_t) and (_ahora-pd.Timestamp(_t)).total_seconds() > _vseg:
-                _ak = f"a5_{_cid}"
+            for _,_r in _cb[_cb["Cumplimiento"]==True].iterrows():
+                _n=norm_num(str(_r.get("Número","")))
+                for _k,_v in list(st.session_state.notif_sin_devolver.items()):
+                    if norm_num(_v["num"])==_n: del st.session_state.notif_sin_devolver[_k]; break
+        _vseg=st.session_state.cfg_ventana_cb*60
+        for _cid,_info in list(st.session_state.notif_sin_devolver.items()):
+            _t=_info.get("t")
+            if _t is not None and pd.notna(_t) and (_ahora-pd.Timestamp(_t)).total_seconds()>_vseg:
+                _ak=f"a5_{_cid}"
                 if _ak not in st.session_state.notif_ids_vistos:
                     st.session_state.notif_ids_vistos.add(_ak)
-                    st.toast(f"⚠️ Sin devolver +{st.session_state.cfg_ventana_cb}min — {_info['num']} · {_info['resp']}", icon="🚨")
-                    _notif_js.append(f"Sin devolver +{st.session_state.cfg_ventana_cb}min\\n{_info['num']}\\n{_info['resp']}")
-
+                    st.toast(f"⚠️ Sin devolver +{st.session_state.cfg_ventana_cb}min — {_info['num']} · {_info['resp']}",icon="🚨")
+                    _notif_js.append(f"⚠️ Sin devolver +{st.session_state.cfg_ventana_cb}min\\n{_info['num']}\\n{_info['resp']}")
     if _notif_js:
-        _msgs = str(_notif_js).replace("'",'"')
-        components.html(
-            "<script>const msgs=" + _msgs + ";"
-            "function sn(m){if(Notification.permission==='granted')new Notification('Supervisor',{body:m});"
-            "else if(Notification.permission!=='denied')Notification.requestPermission().then(p=>{if(p==='granted')new Notification('Supervisor',{body:m})})}"
-            "msgs.forEach(m=>sn(m));</script>", height=0)
+        _msgs=str(_notif_js).replace("'",'"')
+        components.html(f"""<script>const msgs={_msgs};function sn(m){{if(Notification.permission==="granted")new Notification("🎯 Supervisor",{{body:m}});else if(Notification.permission!=="denied")Notification.requestPermission().then(p=>{{if(p==="granted")new Notification("🎯 Supervisor",{{body:m}})}})}}msgs.forEach(m=>sn(m));</script>""",height=0)
 
-    llamadas_activas = []
+    llamadas_activas=[]
     if df_live is not None and not df_live.empty:
-        df_lv = df_live.copy()
+        df_lv=df_live.copy()
         for col in ["dnis_user","ani_user","original_callid","ref_callid","ani","dnis","connect_time","disconnect_time"]:
-            if col in df_lv.columns:
-                df_lv[col] = df_lv[col].astype(str).str.strip().replace({"None":"","nan":"","null":"","<NA>":""})
-        agentes_con_anexo = set(get_agentes_con_anexo().keys())
-        df_lv_trn = df_lv[df_lv["dnis_user"]==CENTRAL_ID]
-        df_lv_ag  = df_lv[df_lv["dnis_user"].isin(agentes_con_anexo)]
-        ag_by_orig = {}
-        for _, row in df_lv_ag.iterrows():
-            orig = row.get("original_callid","")
+            if col in df_lv.columns: df_lv[col]=df_lv[col].astype(str).str.strip().replace({"None":"","nan":"","null":"","<NA>":""})
+        df_lv_trn=df_lv[df_lv["dnis_user"]==CENTRAL_ID]; df_lv_ag=df_lv[df_lv["dnis_user"].isin(set(get_agentes_sin_central().keys()))]
+        ag_by_orig={}
+        for _,row in df_lv_ag.iterrows():
+            orig=row.get("original_callid","")
             if not orig: continue
-            if orig not in ag_by_orig or int(row.get("duration",0) or 0) > int(ag_by_orig[orig].get("duration",0) or 0):
-                ag_by_orig[orig] = row
-        procesados = set()
-        for _, trn in df_lv_trn.iterrows():
-            disc_trn = str(trn.get("disconnect_time","") or "")
+            if orig not in ag_by_orig or int(row.get("duration",0) or 0)>int(ag_by_orig[orig].get("duration",0) or 0): ag_by_orig[orig]=row
+        procesados=set()
+        for _,trn in df_lv_trn.iterrows():
+            disc_trn=str(trn.get("disconnect_time","") or "")
             if disc_trn not in ("","None","null","nan"): continue
-            ref_cid  = str(trn.get("ref_callid","") or "")
-            trn_orig = str(trn.get("original_callid","") or "")
+            ref_cid=str(trn.get("ref_callid","") or ""); trn_orig=str(trn.get("original_callid","") or "")
             if trn_orig in procesados: continue
             procesados.add(trn_orig)
-            ag_row = ag_by_orig.get(ref_cid)
+            ag_row=ag_by_orig.get(ref_cid)
             if ag_row is not None:
-                disc_ag = str(ag_row.get("disconnect_time","") or "")
+                disc_ag=str(ag_row.get("disconnect_time","") or "")
                 if disc_ag not in ("","None","null","nan"): continue
-            ani_cliente  = str(trn.get("ani","-") or "-")
-            dnis_marcado = str(trn.get("dnis","-") or "-")
+            ani_cliente=str(trn.get("ani","-") or "-"); dnis_marcado=str(trn.get("dnis","-") or "-")
             if norm_num(ani_cliente) in {norm_num(n) for n in get_nums_excluidos()}: continue
             if ag_row is not None:
-                ag_id = str(ag_row.get("dnis_user","")); ag_dur=int(ag_row.get("duration",0) or 0)
-                ag_ct = str(ag_row.get("connect_time","") or ""); ag_ring=max(0,int(ag_row.get("ring_time",0) or 0))
-                connected = ag_ct not in ("","None","null","nan")
+                ag_id=str(ag_row.get("dnis_user","")); ag_dur=int(ag_row.get("duration",0) or 0)
+                ag_ct=str(ag_row.get("connect_time","") or ""); ag_ring=max(0,int(ag_row.get("ring_time",0) or 0))
+                connected=ag_ct not in ("","None","null","nan")
                 if connected and ag_dur>0: estado="en_llamada"; duracion=ag_dur; connect_time=ag_ct
                 else: estado="timbrando"; duracion=0; connect_time=""
-                agente_conocido = True
+                agente_conocido=True
             else:
-                ag_id=""; ag_ring=0; estado="conectando"
-                duracion=int(trn.get("duration",0) or 0)
-                connect_time=str(trn.get("connect_time","") or "")
-                agente_conocido=False
-            # Para USA (sin anexo): si hay duración en el tronco → Victor Macedo está en llamada
-            dids_cfg_l = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
-            usa_dids_l = {k for k,v in dids_cfg_l.items() if "Unidos" in v.get("pais","")}
-            if dnis_marcado in usa_dids_l and duracion > 0:
-                ag_id = next((k for k,v in st.session_state.cfg_agentes.items()
-                              if v.get("sin_anexo") and v.get("activo",True)), ag_id)
-                agente_conocido = True
-                estado = "en_llamada"
-            did_inf = get_did_info(dnis_marcado)
-            llamadas_activas.append({
-                "ag_id":ag_id, "agente":get_agentes().get(ag_id,"Por identificar") if ag_id else "Por identificar",
-                "numero_cliente":ani_cliente, "dnis_marcado":dnis_marcado,
-                "pais":did_inf["pais"], "bandera":did_inf["bandera"],
-                "duracion":duracion, "ring_time":ag_ring, "estado":estado,
-                "connect_time":connect_time, "agente_conocido":agente_conocido,
-            })
+                ag_id=""; ag_ring=0; estado="conectando"; duracion=int(trn.get("duration",0) or 0); connect_time=str(trn.get("connect_time","") or ""); agente_conocido=False
+            llamadas_activas.append({"ag_id":ag_id,"agente":get_agentes().get(ag_id,"Por identificar") if ag_id else "Por identificar",
+                "numero_cliente":ani_cliente,"dnis_marcado":dnis_marcado,"duracion":duracion,"ring_time":ag_ring,
+                "estado":estado,"connect_time":connect_time,"agente_conocido":agente_conocido})
 
-    ag_ocupados  = {cc["ag_id"] for cc in llamadas_activas if cc["ag_id"]}
-    n_activas    = len(llamadas_activas)
-    n_conectadas = sum(1 for cc in llamadas_activas if cc["estado"]=="en_llamada")
-    n_timbrando  = sum(1 for cc in llamadas_activas if cc["estado"]=="timbrando")
-    n_libres     = len(get_agentes_sin_central())-len(ag_ocupados & set(get_agentes_sin_central()))
+    ag_ocupados={cc["ag_id"] for cc in llamadas_activas if cc["ag_id"]}
+    n_activas=len(llamadas_activas); n_conectadas=sum(1 for cc in llamadas_activas if cc["estado"]=="en_llamada")
+    n_timbrando=sum(1 for cc in llamadas_activas if cc["estado"]=="timbrando")
+    n_libres=len(get_agentes_sin_central())-len(ag_ocupados&set(get_agentes_sin_central()))
 
-    _bg=c["card"]; _text=c["text"]; _m2=c["muted2"]; _green=c["green"]
-    _yel=c["yellow"]; _red=c["red"]; _brd=c["border"]; _brd2=c["border2"]
-    _muted=c["muted"]; _m3=c["muted3"]; _rdim=c["red_dim"]; _rbrd=c["red_border"]
-    _gdim=c["green_dim"]; _ydim=c["yellow_dim"]; _card2=c["card2"]
+    # Extraer colores para evitar conflicto de comillas en f-strings con HTML
+    _bg    = c["card"];    _text  = c["text"];   _m2    = c["muted2"]
+    _green = c["green"];   _yel   = c["yellow"]; _red   = c["red"]
+    _brd   = c["border"];  _brd2  = c["border2"];_m3    = c["muted3"]
+    _rdim  = c["red_dim"]; _rbrd  = c["red_border"]
+    _gdim  = c["green_dim"];_ydim = c["yellow_dim"]
+    _card2 = c["card2"];   _muted = c["muted"]
 
     demo_span = "<span style='color:#EAB308;font-size:11px;background:rgba(234,179,8,.1);padding:2px 8px;border-radius:4px'>&#x1F9EA; DEMO</span>" if st.session_state.cfg_modo_demo else ""
     st.markdown(
-        "<div style='display:flex;align-items:center;justify-content:space-between;padding:14px 18px;"
-        "background:" + _bg + ";border:1px solid rgba(239,68,68,.3);border-radius:12px;margin-bottom:20px'>"
-        "<div style='display:flex;align-items:center;gap:14px'>"
-        "<div style='width:10px;height:10px;border-radius:50%;background:#EF4444;animation:blink 1s infinite'></div>"
-        "<span style='color:" + _text + ";font-size:17px;font-weight:300'>Monitoreo en Vivo</span>"
-        "<span style='color:" + _m2 + ";font-size:12px;font-family:JetBrains Mono,monospace'>" + lbl + "</span>"
-        + demo_span +
-        "</div><div style='display:flex;gap:20px;font-family:JetBrains Mono,monospace;font-size:12px'>"
-        "<span style='color:" + _green + "'>" + str(n_conectadas) + " en llamada</span>"
-        "<span style='color:" + _yel + "'>" + str(n_timbrando) + " timbrando</span>"
-        "<span style='color:" + _m2 + "'>cada " + str(intervalo) + "s</span>"
-        "</div></div>",
+        f"<div style='display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:{_bg};border:1px solid rgba(239,68,68,.3);border-radius:12px;margin-bottom:20px'>"
+        f"<div style='display:flex;align-items:center;gap:14px'>"
+        f"<div style='width:10px;height:10px;border-radius:50%;background:#EF4444;animation:blink 1s infinite'></div>"
+        f"<span style='color:{_text};font-size:17px;font-weight:300'>Monitoreo en Vivo</span>"
+        f"<span style='color:{_m2};font-size:12px;font-family:JetBrains Mono,monospace'>{lbl}</span>"
+        f"{demo_span}</div>"
+        f"<div style='display:flex;gap:20px;font-family:JetBrains Mono,monospace;font-size:12px'>"
+        f"<span style='color:{_green}'>{n_conectadas} en llamada</span>"
+        f"<span style='color:{_yel}'>{n_timbrando} timbrando</span>"
+        f"<span style='color:{_m2}'>cada {intervalo}s</span>"
+        f"</div></div>",
         unsafe_allow_html=True)
 
-    kc1,kc2,kc3,kc4 = st.columns(4)
-    kc1.metric("Llamadas activas", n_activas)
-    kc2.metric("En conversación",  n_conectadas)
-    kc3.metric("Timbrando",        n_timbrando)
-    kc4.metric("Agentes libres",   n_libres)
+    kc1,kc2,kc3,kc4=st.columns(4)
+    kc1.metric("Llamadas activas",n_activas); kc2.metric("En conversación",n_conectadas)
+    kc3.metric("Timbrando",n_timbrando);      kc4.metric("Agentes libres",n_libres)
     st.caption(f"🔍 {_debug_info}")
 
     if st.session_state.notif_sin_devolver:
-        def _seg_pend(v):
-            t = v.get("t")
+        def _seg_pend2(v):
+            t=v.get("t")
             if t is None or not pd.notna(t): return 0
             return (_ahora-pd.Timestamp(t)).total_seconds()
-        _pend = sorted([(_seg_pend(_v),_v,_k) for _k,_v in st.session_state.notif_sin_devolver.items()], reverse=True)
-        st.markdown(
-            "<div style='background:" + _rdim + ";border:1px solid " + _rbrd + ";"
-            "border-radius:10px;padding:14px 18px;margin-bottom:16px'>"
-            "<div style='color:" + _red + ";font-size:13px;font-weight:600;margin-bottom:10px'>"
-            "&#x1F6A8; " + str(len(_pend)) + " sin resolver</div>",
-            unsafe_allow_html=True)
-        for _seg, _info, _ in _pend:
-            _col = _red if _seg > st.session_state.cfg_ventana_cb*60 else _yel
-            _b   = "&#x26A0;&#xFE0F; +" + str(st.session_state.cfg_ventana_cb) + "MIN" if _seg > st.session_state.cfg_ventana_cb*60 else fmt_dur(int(_seg))
-            st.markdown(
-                "<div style='display:flex;justify-content:space-between;align-items:center;"
-                "padding:8px 0;border-bottom:1px solid " + _brd2 + "'>"
-                "<div style='font-family:JetBrains Mono,monospace'>"
-                "<span style='color:" + _text + ";font-size:13px'>" + _info["num"] + "</span>"
-                "<span style='color:" + _m2 + ";font-size:11px;margin-left:10px'>" + _info["esc"] + "</span></div>"
-                "<div style='text-align:right'>"
-                "<div style='color:" + _col + ";font-size:12px;font-weight:600'>" + _b + "</div>"
-                "<div style='color:" + _m2 + ";font-size:10px;font-family:JetBrains Mono,monospace'>" + _info["resp"] + "</div>"
-                "</div></div>",
-                unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        _pend=sorted([(_seg_pend2(_v),_v,_k) for _k,_v in st.session_state.notif_sin_devolver.items()],reverse=True)
+        st.markdown(f"<div style='background:{_rdim};border:1px solid {_rbrd};border-radius:10px;padding:14px 18px;margin-bottom:16px'><div style='color:{_red};font-size:13px;font-weight:600;margin-bottom:10px'>&#x1F6A8; {len(_pend)} sin resolver</div>",unsafe_allow_html=True)
+        for _seg,_info,_ in _pend:
+            _col=_red if _seg>st.session_state.cfg_ventana_cb*60 else _yel
+            _b=f"&#x26A0;&#xFE0F; +{st.session_state.cfg_ventana_cb}MIN" if _seg>st.session_state.cfg_ventana_cb*60 else fmt_dur(int(_seg))
+            st.markdown(f"<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid {_brd2}'><div style='font-family:JetBrains Mono,monospace'><span style='color:{_text};font-size:13px'>{_info['num']}</span><span style='color:{_m2};font-size:11px;margin-left:10px'>{_info['esc']}</span></div><div style='text-align:right'><div style='color:{_col};font-size:12px;font-weight:600'>{_b}</div><div style='color:{_m2};font-size:10px;font-family:JetBrains Mono,monospace'>{_info['resp']}</div></div></div>",unsafe_allow_html=True)
+        st.markdown("</div>",unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("#### &#x1F465; Estado de agentes")
-    cols_ag = st.columns(3)
-    for i, (ag_id, ag_nombre) in enumerate(get_agentes_sin_central().items()):
-        llamada = next((cc for cc in llamadas_activas if cc["ag_id"]==ag_id), None)
+    st.markdown("<br>",unsafe_allow_html=True); st.markdown("#### 👥 Estado de agentes")
+    cols_ag=st.columns(3)
+    for i,(ag_id,ag_nombre) in enumerate(get_agentes_sin_central().items()):
+        llamada=next((cc for cc in llamadas_activas if cc["ag_id"]==ag_id),None)
         if llamada is None:
-            dot=_green; borde=c["green_border"]
-            estado_h = "<span style='color:" + _gdim + ";font-size:11px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>&#x1F7E2; LIBRE</span>"
-            det_h    = "<div style='color:" + _m3 + ";font-size:12px;margin-top:10px;font-family:JetBrains Mono,monospace'>Sin actividad</div>"
-        elif llamada["estado"] == "timbrando":
-            dot=_yel; borde="rgba(234,179,8,.3)"
-            estado_h = "<span style='color:" + _ydim + ";font-size:11px;letter-spacing:1px;font-family:JetBrains Mono,monospace;animation:blink 1s infinite'>&#x1F7E1; TIMBRANDO</span>"
-            det_h = (
-                "<div style='margin-top:10px;background:rgba(234,179,8,.07);border-radius:8px;padding:10px'>"
-                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace'>"
-                "<span style='color:" + _m2 + "'>Cliente</span><span style='color:" + _text + "'>" + llamada["numero_cliente"] + "</span></div>"
-                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
-                "<span style='color:" + _m2 + "'>DID</span><span style='color:" + _muted + "'>" + llamada["dnis_marcado"] + "</span></div>"
-                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
-                "<span style='color:" + _m2 + "'>Timbrando</span><span style='color:" + _yel + "'>" + str(llamada["ring_time"]) + "s</span></div></div>")
+            dot,borde=c["green"],c["green_border"]
+            estado_h=f"<span style='color:{c['green_dim']};font-size:11px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>🟢 LIBRE</span>"
+            det_h=f"<div style='color:{c['muted3']};font-size:12px;margin-top:10px;font-family:JetBrains Mono,monospace'>Sin actividad</div>"
+        elif llamada["estado"]=="timbrando":
+            dot,borde=c["yellow"],f"rgba(234,179,8,.3)"
+            estado_h=f"<span style='color:{c['yellow_dim']};font-size:11px;letter-spacing:1px;font-family:JetBrains Mono,monospace;animation:blink 1s infinite'>🟡 TIMBRANDO</span>"
+            det_h=f"""<div style='margin-top:10px;background:rgba(234,179,8,.07);border-radius:8px;padding:10px'>
+              <div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace'>
+                <span style='color:{c['muted2']}'>Cliente</span><span style='color:{c['text']}'>{llamada['numero_cliente']}</span></div>
+              <div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>
+                <span style='color:{c['muted2']}'>DID</span><span style='color:{c['muted']}'>{llamada['dnis_marcado']}</span></div>
+              <div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>
+                <span style='color:{c['muted2']}'>Timbrando</span><span style='color:{c['yellow']}'>{llamada['ring_time']}s</span></div></div>"""
         else:
-            dot=_red; borde=c["red_border"]
-            estado_h = "<span style='color:" + _rdim + ";font-size:11px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>&#x1F534; EN LLAMADA</span>"
-            m,s = divmod(llamada["duracion"],60); dur_f=f"{m}:{str(s).zfill(2)}"
-            badge = "" if llamada["agente_conocido"] else "<span style='font-size:9px;color:" + _ydim + ";background:rgba(234,179,8,.1);padding:2px 6px;border-radius:4px'>identificando…</span>"
-            ct_div = ("<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
-                      "<span style='color:" + _m2 + "'>Conectó</span><span style='color:" + _muted + "'>" + llamada["connect_time"][:16] + "</span></div>") if llamada["connect_time"] else ""
-            det_h = (
-                "<div style='margin-top:10px;background:rgba(239,68,68,.07);border-radius:8px;padding:10px'>"
-                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace'>"
-                "<span style='color:" + _m2 + "'>Cliente</span><span style='color:" + _text + "'>" + llamada["numero_cliente"] + "</span></div>"
-                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
-                "<span style='color:" + _m2 + "'>Canal</span><span style='color:" + _muted + "'>" + llamada["bandera"] + " " + llamada["pais"] + "</span></div>"
-                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
-                "<span style='color:" + _m2 + "'>Duración</span><span style='color:" + _red + ";font-weight:600'>" + dur_f + "</span></div>"
-                "<div style='display:flex;justify-content:space-between;align-items:center;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
-                "<span style='color:" + _m2 + "'>Agente</span><span style='color:" + _muted + "'>" + llamada["agente"] + " " + badge + "</span></div>"
-                + ct_div + "</div>")
+            dot,borde=c["red"],c["red_border"]
+            estado_h=f"<span style='color:{c['red_dim']};font-size:11px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>🔴 EN LLAMADA</span>"
+            m,s=divmod(llamada["duracion"],60); dur_f=f"{m}:{str(s).zfill(2)}"
+            badge="" if llamada["agente_conocido"] else f" <span style='font-size:9px;color:{c['yellow_dim']};background:rgba(234,179,8,.1);padding:2px 6px;border-radius:4px'>identificando…</span>"
+            det_h=f"""<div style='margin-top:10px;background:rgba(239,68,68,.07);border-radius:8px;padding:10px'>
+              <div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace'>
+                <span style='color:{c['muted2']}'>Cliente</span><span style='color:{c['text']}'>{llamada['numero_cliente']}</span></div>
+              <div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>
+                <span style='color:{c['muted2']}'>DID</span><span style='color:{c['muted']}'>{llamada['dnis_marcado']}</span></div>
+              <div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>
+                <span style='color:{c['muted2']}'>Duración</span><span style='color:{c['red']};font-weight:600'>{dur_f}</span></div>
+              <div style='display:flex;justify-content:space-between;align-items:center;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>
+                <span style='color:{c['muted2']}'>Agente</span><span style='color:{c['muted']}'>{llamada['agente']}{badge}</span></div>
+              {"<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'><span style='color:"+c['muted2']+"'>Conectó</span><span style='color:"+c['muted']+"'>"+llamada['connect_time'][:16]+"</span></div>" if llamada["connect_time"] else ""}
+            </div>"""
         with cols_ag[i%3]:
-            st.markdown(
-                "<div style='background:" + _bg + ";border:1px solid " + borde + ";"
-                "border-top:3px solid " + dot + ";border-radius:10px;padding:16px;margin-bottom:14px'>"
-                "<div style='display:flex;justify-content:space-between;align-items:flex-start'>"
-                "<div><div style='color:" + _text + ";font-size:14px;font-weight:500'>" + ag_nombre + "</div>"
-                "<div style='color:" + _m2 + ";font-size:10px;font-family:JetBrains Mono,monospace;margin-top:2px'>ID " + ag_id + "</div></div>"
-                "<div>" + estado_h + "</div></div>" + det_h + "</div>",
-                unsafe_allow_html=True)
+            st.markdown(f"""<div style='background:{c['card']};border:1px solid {borde};border-top:3px solid {dot};border-radius:10px;padding:16px;margin-bottom:14px'>
+              <div style='display:flex;justify-content:space-between;align-items:flex-start'>
+                <div><div style='color:{c['text']};font-size:14px;font-weight:500'>{ag_nombre}</div>
+                <div style='color:{c['muted2']};font-size:10px;font-family:JetBrains Mono,monospace;margin-top:2px'>ID {ag_id}</div></div>
+                <div>{estado_h}</div></div>{det_h}</div>""",unsafe_allow_html=True)
 
     sin_asignar = [cc for cc in llamadas_activas if not cc["agente_conocido"]]
+    sin_asignar = [cc for cc in llamadas_activas if not cc["agente_conocido"]]
     if sin_asignar:
-        st.markdown("---"); st.markdown("#### &#x1F4DE; En cola / por asignar")
         for cc in sin_asignar:
-            m,s = divmod(cc["duracion"],60); df_ = f"{m}:{str(s).zfill(2)}" if cc["duracion"]>0 else "—"
-            st.markdown(
-                "<div style='background:" + _bg + ";border:1px solid rgba(234,179,8,.3);"
-                "border-left:3px solid " + _yel + ";border-radius:10px;padding:14px 18px;"
-                "margin-bottom:8px;display:flex;justify-content:space-between;align-items:center'>"
-                "<div style='font-family:JetBrains Mono,monospace'>"
-                "<div style='color:" + _text + ";font-size:14px'>&#x1F4DE; " + cc["numero_cliente"] + "</div>"
-                "<div style='color:" + _m2 + ";font-size:11px;margin-top:4px'>DID: " + cc["dnis_marcado"] + "</div></div>"
-                "<div style='text-align:right;font-family:JetBrains Mono,monospace'>"
-                "<div style='color:" + _yel + ";font-size:18px;font-weight:300'>" + df_ + "</div>"
-                "<div style='color:" + _ydim + ";font-size:10px'>identificando…</div></div></div>",
-                unsafe_allow_html=True)
-    elif n_activas == 0:
-        st.markdown(
-            "<div style='text-align:center;padding:40px;background:" + _bg + ";"
-            "border:1px solid " + _brd + ";border-radius:12px;margin-top:8px'>"
-            "<div style='font-size:36px;margin-bottom:10px'>&#x1F4F5;</div>"
-            "<div style='color:" + _muted + ";font-size:14px'>No hay llamadas activas</div></div>",
-            unsafe_allow_html=True)
-
+            m,s=divmod(cc["duracion"],60); df_=f"{m}:{str(s).zfill(2)}" if cc["duracion"]>0 else "—"
+            st.markdown(f"<div style='background:{_bg};border:1px solid rgba(234,179,8,.3);border-left:3px solid {_yel};border-radius:10px;padding:14px 18px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center'><div style='font-family:JetBrains Mono,monospace'><div style='color:{_text};font-size:14px'>&#x1F4DE; {cc['numero_cliente']}</div><div style='color:{_m2};font-size:11px;margin-top:4px'>DID: {cc['dnis_marcado']}</div></div><div style='text-align:right;font-family:JetBrains Mono,monospace'><div style='color:{_yel};font-size:18px;font-weight:300'>{df_}</div><div style='color:{_ydim};font-size:10px'>identificando…</div></div></div>",unsafe_allow_html=True)
+    elif n_activas==0:
+        st.markdown(f"<div style='text-align:center;padding:40px;background:{_bg};border:1px solid {_brd};border-radius:12px;margin-top:8px'><div style='font-size:36px;margin-bottom:10px'>&#x1F4F5;</div><div style='color:{_muted};font-size:14px'>No hay llamadas activas</div></div>",unsafe_allow_html=True)
     time.sleep(intervalo); st.rerun(); st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MODO HISTÓRICO
 # ══════════════════════════════════════════════════════════════════════════════
-df_ent = st.session_state.df_ent if st.session_state.df_ent is not None else pd.DataFrame()
-df_sal = st.session_state.df_sal if st.session_state.df_sal is not None else pd.DataFrame()
-df_raw = st.session_state.df_raw
-lbl    = st.session_state.label
-
+df_ent=st.session_state.df_ent if st.session_state.df_ent is not None else pd.DataFrame()
+df_sal=st.session_state.df_sal if st.session_state.df_sal is not None else pd.DataFrame()
+df_raw=st.session_state.df_raw; lbl=st.session_state.label
 if df_ent.empty and df_sal.empty: st.warning("Sin registros para el período."); st.stop()
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
-n_ent     = len(df_ent)
-n_ent_at  = int(df_ent["atendida"].sum())         if not df_ent.empty else 0
-n_ent_per = n_ent - n_ent_at
-pct_at    = round(n_ent_at/n_ent*100)              if n_ent else 0
-n_sal     = len(df_sal)
-n_sal_ok  = int((df_sal["atendida"]==True).sum())  if not df_sal.empty else 0
-avg_dur   = safe_mean(df_ent, "duracion")
-avg_esp   = safe_mean(df_ent, "espera_total")
+n_ent      = len(df_ent)
+n_ent_at   = int(df_ent["atendida"].sum())        if not df_ent.empty else 0
+n_ent_per  = n_ent - n_ent_at
+pct_at     = round(n_ent_at/n_ent*100)             if n_ent else 0
+n_sal      = len(df_sal)
+n_sal_ok   = int((df_sal["atendida"]==True).sum()) if not df_sal.empty else 0
+avg_dur    = safe_mean(df_ent,"duracion")
+avg_esp    = safe_mean(df_ent,"espera_total")
 
-df_cb_kpi   = calcular_cumplimiento(df_ent, df_sal)
-n_resueltas = int(df_cb_kpi["Cumplimiento"].sum()) if not df_cb_kpi.empty and "Cumplimiento" in df_cb_kpi.columns else 0
-balance_pct = round((n_ent_at+n_resueltas)/n_ent*100) if n_ent else 0
-balance_delta = f"+{balance_pct-pct_at}%" if balance_pct > pct_at else None
+# Balance de atención: atendidas + resueltas en tiempo / total
+df_cb_kpi  = calcular_cumplimiento(df_ent,df_sal)
+n_resueltas= int(df_cb_kpi["Cumplimiento"].sum()) if not df_cb_kpi.empty and "Cumplimiento" in df_cb_kpi.columns else 0
+balance_pct= round((n_ent_at+n_resueltas)/n_ent*100) if n_ent else 0
+balance_delta= f"+{balance_pct-pct_at}%" if balance_pct>pct_at else None
 
-P = dict(paper_bgcolor=c["plot_bg"], plot_bgcolor=c["plot_bg"],
-         font=dict(color=c["muted"],family="Outfit"), margin=dict(t=10,b=30,l=5,r=5))
+P=dict(paper_bgcolor=c["plot_bg"],plot_bgcolor=c["plot_bg"],
+       font=dict(color=c["muted"],family="Outfit"),margin=dict(t=10,b=30,l=5,r=5))
 
-_txt=c["text"]; _m2=c["muted2"]; _brd=c["border"]; _m3=c["muted3"]; _pri=c["primary"]
-demo_badge = ("<span style='color:" + c["yellow"] + ";font-size:11px;background:rgba(234,179,8,.1);"
-              "padding:2px 8px;border-radius:4px;margin-left:10px'>&#x1F9EA; DEMO</span>") if st.session_state.cfg_modo_demo else ""
-st.markdown(
-    "<div style='display:flex;align-items:flex-end;justify-content:space-between;"
-    "padding:0 0 18px;border-bottom:1px solid " + _brd + ";margin-bottom:22px'>"
-    "<div><div style='font-size:22px;font-weight:300;color:" + _txt + "'>Panel de Supervisor · Soporte" + demo_badge + "</div>"
-    "<div style='font-size:11px;color:" + _m2 + ";font-family:JetBrains Mono,monospace;margin-top:4px'>"
-    + lbl + " · " + str(n_ent) + " entrantes · " + str(n_sal) + " salientes</div></div>"
-    "<div style='font-size:11px;color:" + _m3 + ";font-family:JetBrains Mono,monospace'>" + _U + " · CallMyWay</div></div>",
-    unsafe_allow_html=True)
+demo_badge=f"<span style='color:{c['yellow']};font-size:11px;background:rgba(234,179,8,.1);padding:2px 8px;border-radius:4px;margin-left:10px'>🧪 MODO DEMO</span>" if st.session_state.cfg_modo_demo else ""
+st.markdown(f"""<div style='display:flex;align-items:flex-end;justify-content:space-between;
+    padding:0 0 18px;border-bottom:1px solid {c['border']};margin-bottom:22px'>
+  <div><div style='font-size:22px;font-weight:300;color:{c['text']}'>Panel de Supervisor · Soporte{demo_badge}</div>
+    <div style='font-size:11px;color:{c['muted2']};font-family:JetBrains Mono,monospace;margin-top:4px'>
+      {lbl} · {n_ent} entrantes · {n_sal} salientes</div></div>
+  <div style='font-size:11px;color:{c['muted3']};font-family:JetBrains Mono,monospace'>{_U} · CallMyWay</div>
+</div>""",unsafe_allow_html=True)
 
-c1,c2,c3,c4,c5,c6,c7,c8,c9 = st.columns(9)
-c1.metric("Entrantes",        f"{n_ent:,}")
-c2.metric("Atendidas",        f"{n_ent_at:,}",  f"{pct_at}%")
-c3.metric("Perdidas",         f"{n_ent_per:,}", f"-{100-pct_at}%")
-c4.metric("% Atención",       f"{pct_at}%")
-c5.metric("Balance atención", f"{balance_pct}%", balance_delta,
-          help=f"Incluye {n_resueltas} llamada(s) resuelta(s) en {st.session_state.cfg_ventana_cb} min")
-c6.metric("Salientes",        f"{n_sal:,}")
-c7.metric("Sal. conectadas",  f"{n_sal_ok:,}")
-c8.metric("Dur. prom.",       fmt_dur(avg_dur))
-c9.metric("Espera prom.",     fmt_dur(avg_esp))
-st.markdown("<br>", unsafe_allow_html=True)
+c1,c2,c3,c4,c5,c6,c7,c8,c9=st.columns(9)
+c1.metric("Entrantes",       f"{n_ent:,}")
+c2.metric("Atendidas",       f"{n_ent_at:,}",  f"{pct_at}%")
+c3.metric("Perdidas",        f"{n_ent_per:,}", f"-{100-pct_at}%")
+c4.metric("% Atención",      f"{pct_at}%")
+c5.metric("Balance atención",f"{balance_pct}%", balance_delta, help=f"% atención incluyendo {n_resueltas} llamada(s) perdida(s) que fueron resueltas dentro de {st.session_state.cfg_ventana_cb} min")
+c6.metric("Salientes",       f"{n_sal:,}")
+c7.metric("Sal. conectadas", f"{n_sal_ok:,}")
+c8.metric("Dur. prom.",      fmt_dur(avg_dur))
+c9.metric("Espera prom.",    fmt_dur(avg_esp))
+st.markdown("<br>",unsafe_allow_html=True)
 
-# ── Selector de canal ──────────────────────────────────────────────────────────
-_dids_cfg = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
-_canal_opts = ["🌐 Todos"] + [
-    v["bandera"] + " " + v["pais"]
-    for v in _dids_cfg.values() if v.get("activo", True)
-]
-_did_by_label = {"🌐 Todos": None}
-for _dk, _dv in _dids_cfg.items():
-    if _dv.get("activo", True):
-        _did_by_label[_dv["bandera"] + " " + _dv["pais"]] = _dk
+tabs=st.tabs(["VISIÓN GENERAL","ENTRANTES","SALIENTES","AGENTES","TURNOS","SEGUIMIENTO","CLIENTES","REGISTROS"])
+tab_ov,tab_ent,tab_sal,tab_ag,tab_tur,tab_seg,tab_cl,tab_raw_t=tabs
 
-_canal_idx = _canal_opts.index(st.session_state.canal_sel) if st.session_state.canal_sel in _canal_opts else 0
-_canal_nuevo = st.radio("Canal", _canal_opts, index=_canal_idx, horizontal=True, label_visibility="collapsed")
-if _canal_nuevo != st.session_state.canal_sel:
-    st.session_state.canal_sel = _canal_nuevo
-    st.rerun()
-
-_did_filtro = _did_by_label.get(st.session_state.canal_sel)
-
-# Filtrar df_ent por DID si aplica
-if _did_filtro and not df_ent.empty and "dnis_marcado" in df_ent.columns:
-    df_ent = df_ent[df_ent["dnis_marcado"] == _did_filtro].copy()
-
-if _did_filtro:
-    _info_did = _dids_cfg.get(_did_filtro, {})
-    st.markdown(
-        "<div style='background:" + c["card"] + ";border:1px solid " + c["border"] + ";"
-        "border-left:3px solid " + c["primary"] + ";border-radius:8px;padding:10px 16px;"
-        "margin-bottom:8px;display:flex;align-items:center;gap:12px'>"
-        "<span style='font-size:22px'>" + _info_did.get("bandera","") + "</span>"
-        "<div><div style='color:" + c["text"] + ";font-weight:500'>"
-        + _info_did.get("pais","") + " · DID " + _did_filtro + "</div>"
-        "<div style='color:" + c["muted2"] + ";font-size:12px;font-family:JetBrains Mono,monospace'>"
-        "Mostrando solo llamadas de este canal</div></div></div>",
-        unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# ── Tabs ───────────────────────────────────────────────────────────────────────
-tabs = st.tabs(["VISIÓN GENERAL","ENTRANTES","SALIENTES","AGENTES","TURNOS","SEGUIMIENTO","CLIENTES","REGISTROS"])
-tab_ov,tab_ent,tab_sal,tab_ag,tab_tur,tab_seg,tab_cl,tab_raw_t = tabs
-
-# ── TAB 0: VISIÓN GENERAL ──────────────────────────────────────────────────────
 with tab_ov:
-    r1,r2,r3 = st.columns([1.1,1.4,1.5])
+    r1,r2,r3=st.columns([1.1,1.4,1.5])
     with r1:
-        fig_d = go.Figure(go.Pie(labels=["Atendidas","Perdidas"], values=[n_ent_at,n_ent_per],
-            hole=0.7, marker=dict(colors=[c["bar_green"],c["bar_red"]], line=dict(width=0)), textinfo="none"))
-        fig_d.add_annotation(text=f"<b>{pct_at}%</b>", x=0.5, y=0.56, font=dict(size=30,color=c["text"]), showarrow=False)
-        fig_d.add_annotation(text="atención",           x=0.5, y=0.40, font=dict(size=12,color=c["muted"]), showarrow=False)
-        fig_d.update_layout(height=200, showlegend=False, **P)
-        st.plotly_chart(fig_d, use_container_width=True)
-        st.markdown(
-            "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:-10px'>"
-            "<div style='background:" + c["card"] + ";border:1px solid " + c["green_border"] + ";border-radius:8px;padding:10px;text-align:center'>"
-            "<div style='color:" + c["green_dim"] + ";font-size:10px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>ATENDIDAS</div>"
-            "<div style='color:" + c["green"] + ";font-size:22px;font-weight:300'>" + str(n_ent_at) + "</div></div>"
-            "<div style='background:" + c["card"] + ";border:1px solid " + c["red_border"] + ";border-radius:8px;padding:10px;text-align:center'>"
-            "<div style='color:" + c["red_dim"] + ";font-size:10px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>PERDIDAS</div>"
-            "<div style='color:" + c["red"] + ";font-size:22px;font-weight:300'>" + str(n_ent_per) + "</div></div></div>",
-            unsafe_allow_html=True)
+        donut_colors=[c["bar_green"],c["bar_red"]]
+        fig_d=go.Figure(go.Pie(labels=["Atendidas","Perdidas"],values=[n_ent_at,n_ent_per],hole=0.7,
+            marker=dict(colors=donut_colors,line=dict(width=0)),textinfo="none"))
+        fig_d.add_annotation(text=f"<b>{pct_at}%</b>",x=0.5,y=0.56,font=dict(size=30,color=c["text"]),showarrow=False)
+        fig_d.add_annotation(text="atención",x=0.5,y=0.40,font=dict(size=12,color=c["muted"]),showarrow=False)
+        fig_d.update_layout(height=200,showlegend=False,**P); st.plotly_chart(fig_d,use_container_width=True)
+        st.markdown(f"""<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:-10px'>
+          <div style='background:{c['card']};border:1px solid {c['green_border']};border-radius:8px;padding:10px;text-align:center'>
+            <div style='color:{c['green_dim']};font-size:10px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>ATENDIDAS</div>
+            <div style='color:{c['green']};font-size:22px;font-weight:300'>{n_ent_at}</div></div>
+          <div style='background:{c['card']};border:1px solid {c['red_border']};border-radius:8px;padding:10px;text-align:center'>
+            <div style='color:{c['red_dim']};font-size:10px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>PERDIDAS</div>
+            <div style='color:{c['red']};font-size:22px;font-weight:300'>{n_ent_per}</div></div>
+        </div>""",unsafe_allow_html=True)
     with r2:
         if not df_ent.empty and "hora" in df_ent.columns:
-            hd = df_ent.groupby(["hora","atendida"]).size().reset_index(name="n")
-            hd["estado"] = hd["atendida"].map({True:"Atendida",False:"Perdida"})
-            fig_h = px.bar(hd, x="hora", y="n", color="estado",
-                color_discrete_map={"Atendida":c["bar_green"],"Perdida":c["bar_red"]}, barmode="stack")
-            fig_h.update_layout(height=240, **P,
-                xaxis=dict(title="Hora",dtick=1,gridcolor=c["grid"],tickfont_size=10),
-                yaxis=dict(gridcolor=c["grid"],title=""),
-                legend=dict(font_size=11,orientation="h",y=-0.2), bargap=0.15)
-            fig_h.update_traces(marker_line_width=0)
-            st.plotly_chart(fig_h, use_container_width=True)
+            hd=df_ent.groupby(["hora","atendida"]).size().reset_index(name="n")
+            hd["estado"]=hd["atendida"].map({True:"Atendida",False:"Perdida"})
+            fig_h=px.bar(hd,x="hora",y="n",color="estado",
+                color_discrete_map={"Atendida":c["bar_green"],"Perdida":c["bar_red"]},barmode="stack")
+            fig_h.update_layout(height=240,**P,xaxis=dict(title="Hora",dtick=1,gridcolor=c["grid"],tickfont_size=10),
+                yaxis=dict(gridcolor=c["grid"],title=""),legend=dict(font_size=11,orientation="h",y=-0.2),bargap=0.15)
+            fig_h.update_traces(marker_line_width=0); st.plotly_chart(fig_h,use_container_width=True)
     with r3:
         if not df_ent.empty and "escenario" in df_ent.columns:
-            ec = df_ent["escenario"].value_counts().reset_index()
-            ec.columns = ["esc","n"]; ec["label"]=ec["esc"].apply(esc_es); ec["color"]=ec["esc"].apply(esc_color)
-            ec = ec.sort_values("n", ascending=True)
-            fig_ec = go.Figure(go.Bar(x=ec["n"], y=ec["label"], orientation="h",
-                marker_color=ec["color"], marker_line_width=0,
-                text=ec["n"], textposition="outside", textfont=dict(size=11,color=c["muted"])))
-            fig_ec.update_layout(height=240, **P,
-                title=dict(text="Escenarios",font=dict(size=12,color=c["muted"]),x=0),
-                xaxis=dict(gridcolor=c["grid"],title=""), yaxis=dict(gridcolor=c["grid"],title=""))
-            st.plotly_chart(fig_ec, use_container_width=True)
+            ec=df_ent["escenario"].value_counts().reset_index(); ec.columns=["esc","n"]
+            ec["label"]=ec["esc"].apply(esc_es); ec["color"]=ec["esc"].apply(esc_color); ec=ec.sort_values("n",ascending=True)
+            fig_ec=go.Figure(go.Bar(x=ec["n"],y=ec["label"],orientation="h",marker_color=ec["color"],marker_line_width=0,
+                text=ec["n"],textposition="outside",textfont=dict(size=11,color=c["muted"])))
+            fig_ec.update_layout(height=240,**P,title=dict(text="Escenarios",font=dict(size=12,color=c["muted"]),x=0),
+                xaxis=dict(gridcolor=c["grid"],title=""),yaxis=dict(gridcolor=c["grid"],title=""))
+            st.plotly_chart(fig_ec,use_container_width=True)
     if not df_ent.empty and "fecha" in df_ent.columns:
         st.markdown("---")
-        daily = df_ent.groupby(["fecha","atendida"]).size().reset_index(name="n")
-        daily["estado"] = daily["atendida"].map({True:"Atendida",False:"Perdida"})
-        if len(daily["fecha"].unique()) > 1:
-            fig_ev = px.area(daily, x="fecha", y="n", color="estado",
+        daily=df_ent.groupby(["fecha","atendida"]).size().reset_index(name="n")
+        daily["estado"]=daily["atendida"].map({True:"Atendida",False:"Perdida"})
+        if len(daily["fecha"].unique())>1:
+            fig_ev=px.area(daily,x="fecha",y="n",color="estado",
                 color_discrete_map={"Atendida":c["bar_green"],"Perdida":c["bar_red"]})
-            fig_ev.update_traces(opacity=0.7, line_width=1.5)
-            fig_ev.update_layout(height=200, **P,
-                xaxis=dict(gridcolor=c["grid"],title=""),
-                yaxis=dict(gridcolor=c["grid"],title=""),
-                legend=dict(font_size=11,orientation="h",y=-0.25),
+            fig_ev.update_traces(opacity=0.7,line_width=1.5)
+            fig_ev.update_layout(height=200,**P,xaxis=dict(gridcolor=c["grid"],title=""),
+                yaxis=dict(gridcolor=c["grid"],title=""),legend=dict(font_size=11,orientation="h",y=-0.25),
                 title=dict(text="Evolución diaria",font=dict(size=12,color=c["muted"]),x=0))
-            st.plotly_chart(fig_ev, use_container_width=True)
+            st.plotly_chart(fig_ev,use_container_width=True)
 
-# ── TAB 1: ENTRANTES ───────────────────────────────────────────────────────────
 with tab_ent:
     if df_ent.empty: st.info("Sin llamadas entrantes.")
     else:
-        fc1,fc2,fc3,fc4 = st.columns([2,1,1,1])
-        with fc1: busq = st.text_input("🔍 Buscar número", placeholder="519…", key="busq_ent")
-        with fc2: f_est = st.selectbox("Estado", ["Todos","Atendidas","Perdidas"], key="fest_ent")
+        fc1,fc2,fc3,fc4=st.columns([2,1,1,1])
+        with fc1: busq=st.text_input("🔍 Buscar número",placeholder="519…",key="busq_ent")
+        with fc2: f_est=st.selectbox("Estado",["Todos","Atendidas","Perdidas"],key="fest_ent")
         with fc3:
-            esc_opts = ["Todos"] + (sorted(df_ent["escenario_es"].dropna().unique().tolist()) if "escenario_es" in df_ent.columns else [])
-            f_esc = st.selectbox("Escenario", esc_opts, key="fesc_ent")
+            esc_opts=["Todos"]+sorted(df_ent["escenario_es"].dropna().unique().tolist()) if "escenario_es" in df_ent.columns else ["Todos"]
+            f_esc=st.selectbox("Escenario",esc_opts,key="fesc_ent")
         with fc4:
-            f_ag = st.selectbox("Agente", ["Todos"]+sorted(df_ent["agente"].dropna().unique().tolist()), key="fag_ent")
-        dv = df_ent.copy()
-        if busq: dv = dv[dv["numero_cliente"].str.contains(busq,na=False)]
-        if f_est=="Atendidas": dv = dv[dv["atendida"]==True]
-        elif f_est=="Perdidas": dv = dv[dv["atendida"]==False]
-        if f_esc!="Todos" and "escenario_es" in dv.columns: dv = dv[dv["escenario_es"]==f_esc]
-        if f_ag!="Todos": dv = dv[dv["agente"]==f_ag]
-        cols_t = [cx for cx in ["detect_time","numero_cliente","bandera","escenario_es","agente",
-                                  "agente_timbrando","espera_usuario","responsable","agente_turno",
-                                  "duracion","espera_total","n_intentos"] if cx in dv.columns]
-        ds = dv[cols_t].copy()
+            f_ag=st.selectbox("Agente",["Todos"]+sorted(df_ent["agente"].dropna().unique().tolist()),key="fag_ent")
+        dv=df_ent.copy()
+        if busq: dv=dv[dv["numero_cliente"].str.contains(busq,na=False)]
+        if f_est=="Atendidas": dv=dv[dv["atendida"]==True]
+        elif f_est=="Perdidas": dv=dv[dv["atendida"]==False]
+        if f_esc!="Todos" and "escenario_es" in dv.columns: dv=dv[dv["escenario_es"]==f_esc]
+        if f_ag!="Todos": dv=dv[dv["agente"]==f_ag]
+        cols_t=[cx for cx in ["detect_time","numero_cliente","escenario_es","agente","agente_timbrando","espera_usuario","responsable","agente_turno","duracion","espera_total","n_intentos"] if cx in dv.columns]
+        ds=dv[cols_t].copy()
         for col,fn in [("duracion",fmt_dur),("espera_total",fmt_dur),("espera_usuario",fmt_dur)]:
-            if col in ds.columns: ds[col] = ds[col].apply(fn)
-        ds = ds.rename(columns={"detect_time":"Fecha/Hora","numero_cliente":"Número","bandera":"Canal",
-            "escenario_es":"Escenario","agente":"Contestó","agente_timbrando":"Timbraba a",
-            "espera_usuario":"Esperó","responsable":"Responsable","agente_turno":"Turno",
-            "duracion":"Duración","espera_total":"Ring total","n_intentos":"Intentos"})
-        st.caption(f"{len(dv):,} llamadas")
-        st.dataframe(ds, use_container_width=True, height=460, hide_index=True)
-        ec1,ec2 = st.columns(2)
-        with ec1: st.download_button("⬇ Exportar entrantes",
-            data=df_ent.to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"entrantes_{hoy_lima.strftime('%Y%m%d')}.csv", mime="text/csv")
-        with ec2: st.download_button("⬇ Exportar perdidas",
-            data=df_ent[df_ent["atendida"]==False].to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"perdidas_{hoy_lima.strftime('%Y%m%d')}.csv", mime="text/csv")
+            if col in ds.columns: ds[col]=ds[col].apply(fn)
+        ds=ds.rename(columns={"detect_time":"Fecha/Hora","numero_cliente":"Número","escenario_es":"Escenario","agente":"Contestó",
+            "agente_timbrando":"Timbraba a","espera_usuario":"Esperó","responsable":"Responsable",
+            "agente_turno":"Turno","duracion":"Duración","espera_total":"Ring total","n_intentos":"Intentos"})
+        st.caption(f"{len(dv):,} llamadas"); st.dataframe(ds,use_container_width=True,height=460,hide_index=True)
+        ec1,ec2=st.columns(2)
+        with ec1: st.download_button("⬇ Exportar entrantes",data=df_ent.to_csv(index=False).encode("utf-8-sig"),file_name=f"entrantes_{hoy_lima.strftime('%Y%m%d')}.csv",mime="text/csv")
+        with ec2: st.download_button("⬇ Exportar perdidas",data=df_ent[df_ent["atendida"]==False].to_csv(index=False).encode("utf-8-sig"),file_name=f"perdidas_{hoy_lima.strftime('%Y%m%d')}.csv",mime="text/csv")
 
-# ── TAB 2: SALIENTES ───────────────────────────────────────────────────────────
 with tab_sal:
     if df_sal.empty: st.info("Sin llamadas salientes.")
     else:
-        s1,s2,s3,s4 = st.columns(4)
-        dur_s = df_sal[df_sal["atendida"]==True]["duration"].dropna()
-        s1.metric("Total",          f"{n_sal:,}")
-        s2.metric("Conectadas",     f"{n_sal_ok:,}", f"{round(n_sal_ok/n_sal*100) if n_sal else 0}%")
-        s3.metric("No conectadas",  f"{n_sal-n_sal_ok:,}")
-        s4.metric("Duración prom.", fmt_dur(int(dur_s.mean()) if len(dur_s) else 0))
-        sc1,sc2 = st.columns(2)
+        s1,s2,s3,s4=st.columns(4)
+        dur_s=df_sal[df_sal["atendida"]==True]["duration"].dropna()
+        s1.metric("Total",f"{n_sal:,}"); s2.metric("Conectadas",f"{n_sal_ok:,}",f"{round(n_sal_ok/n_sal*100) if n_sal else 0}%")
+        s3.metric("No conectadas",f"{n_sal-n_sal_ok:,}"); s4.metric("Dur. prom.",fmt_dur(int(dur_s.mean()) if len(dur_s) else 0))
+        st.markdown("<br>",unsafe_allow_html=True)
+        sc1,sc2=st.columns(2)
         with sc1:
-            ag_s = df_sal.groupby(["agente","atendida"]).size().reset_index(name="n")
-            ag_s["estado"] = ag_s["atendida"].map({True:"Conectada",False:"No conectada"})
-            fig_s = px.bar(ag_s, x="agente", y="n", color="estado",
-                color_discrete_map={"Conectada":c["bar_blue"],"No conectada":c["bar_dark"]}, barmode="stack")
-            fig_s.update_layout(height=260, **P, xaxis_title="", yaxis=dict(gridcolor=c["grid"],title=""),
-                legend=dict(font_size=11,orientation="h",y=-0.2),
-                title=dict(text="Salientes por agente",font=dict(size=12,color=c["muted"]),x=0))
-            fig_s.update_traces(marker_line_width=0); st.plotly_chart(fig_s, use_container_width=True)
+            ag_s=df_sal.groupby(["agente","atendida"]).size().reset_index(name="n")
+            ag_s["estado"]=ag_s["atendida"].map({True:"Conectada",False:"No conectada"})
+            fig_s=px.bar(ag_s,x="agente",y="n",color="estado",
+                color_discrete_map={"Conectada":c["bar_blue"],"No conectada":c["bar_dark"]},barmode="stack")
+            fig_s.update_layout(height=260,**P,xaxis_title="",yaxis=dict(gridcolor=c["grid"],title=""),
+                legend=dict(font_size=11,orientation="h",y=-0.2),title=dict(text="Salientes por agente",font=dict(size=12,color=c["muted"]),x=0))
+            fig_s.update_traces(marker_line_width=0); st.plotly_chart(fig_s,use_container_width=True)
         with sc2:
-            er_s = df_sal["end_reason"].value_counts().reset_index(); er_s.columns=["r","n"]
-            er_s["label"] = er_s["r"].map(END_REASONS).fillna(er_s["r"])
-            fig_ers = go.Figure(go.Bar(x=er_s["n"], y=er_s["label"], orientation="h",
-                marker_color=c["bar_blue"], marker_line_width=0,
-                text=er_s["n"], textposition="outside", textfont=dict(size=11,color=c["muted"])))
-            fig_ers.update_layout(height=260, **P,
-                title=dict(text="Resultado salientes",font=dict(size=12,color=c["muted"]),x=0),
-                xaxis=dict(gridcolor=c["grid"],title=""), yaxis=dict(gridcolor=c["grid"],title=""))
-            st.plotly_chart(fig_ers, use_container_width=True)
-        busq_s = st.text_input("🔍 Buscar número", key="busq_sal")
-        dvs = df_sal[df_sal["numero_cliente"].str.contains(busq_s,na=False)].copy() if busq_s else df_sal.copy()
-        cols_s = [cx for cx in ["detect_time","agente","numero_cliente","atendida","duration","end_reason_es"] if cx in dvs.columns]
-        dss = dvs[cols_s].copy()
-        if "duration" in dss.columns: dss["duration"] = dss["duration"].apply(fmt_dur)
-        if "atendida" in dss.columns: dss["atendida"] = dss["atendida"].map({True:"✅ Conectada",False:"❌ No conectada"})
-        dss = dss.rename(columns={"detect_time":"Fecha/Hora","agente":"Agente","numero_cliente":"Número",
-            "atendida":"Estado","duration":"Duración","end_reason_es":"Resultado"})
-        st.dataframe(dss, use_container_width=True, height=360, hide_index=True)
+            er_s=df_sal["end_reason"].value_counts().reset_index(); er_s.columns=["r","n"]
+            er_s["label"]=er_s["r"].map(END_REASONS).fillna(er_s["r"])
+            fig_ers=go.Figure(go.Bar(x=er_s["n"],y=er_s["label"],orientation="h",marker_color=c["bar_blue"],marker_line_width=0,
+                text=er_s["n"],textposition="outside",textfont=dict(size=11,color=c["muted"])))
+            fig_ers.update_layout(height=260,**P,title=dict(text="Resultado salientes",font=dict(size=12,color=c["muted"]),x=0),
+                xaxis=dict(gridcolor=c["grid"],title=""),yaxis=dict(gridcolor=c["grid"],title=""))
+            st.plotly_chart(fig_ers,use_container_width=True)
+        busq_s=st.text_input("🔍 Buscar número",key="busq_sal")
+        dvs=df_sal[df_sal["numero_cliente"].str.contains(busq_s,na=False)].copy() if busq_s else df_sal.copy()
+        cols_s=[cx for cx in ["detect_time","agente","numero_cliente","atendida","duration","end_reason_es"] if cx in dvs.columns]
+        dss=dvs[cols_s].copy()
+        if "duration" in dss.columns: dss["duration"]=dss["duration"].apply(fmt_dur)
+        if "atendida" in dss.columns: dss["atendida"]=dss["atendida"].map({True:"✅ Conectada",False:"❌ No conectada"})
+        dss=dss.rename(columns={"detect_time":"Fecha/Hora","agente":"Agente","numero_cliente":"Número","atendida":"Estado","duration":"Duración","end_reason_es":"Resultado"})
+        st.dataframe(dss,use_container_width=True,height=360,hide_index=True)
 
-# ── TAB 3: AGENTES ─────────────────────────────────────────────────────────────
 with tab_ag:
-    ag_data = []
-    for aid, nombre in get_agentes_sin_central().items():
-        ea    = df_ent[df_ent["agente"]==nombre] if not df_ent.empty else pd.DataFrame()
-        durs  = ea["duracion"].dropna().tolist() if "duracion" in ea.columns else []
-        per_t = len(df_ent[(df_ent["responsable"]==nombre)&(df_ent["atendida"]==False)]) if not df_ent.empty and "responsable" in df_ent.columns else 0
-        sal_a = df_sal[df_sal["agente"]==nombre] if not df_sal.empty else pd.DataFrame()
-        ag_data.append({"id":aid,"nombre":nombre,"ent_at":len(ea),
-            "avg_dur":int(sum(durs)/len(durs)) if durs else 0,
+    ag_data=[]
+    for aid,nombre in get_agentes_sin_central().items():
+        ea=df_ent[df_ent["agente"]==nombre] if not df_ent.empty else pd.DataFrame()
+        durs=ea["duracion"].dropna().tolist() if "duracion" in ea.columns else []
+        per_t=len(df_ent[(df_ent["responsable"]==nombre)&(df_ent["atendida"]==False)]) if not df_ent.empty and "responsable" in df_ent.columns else 0
+        sal_a=df_sal[df_sal["agente"]==nombre] if not df_sal.empty else pd.DataFrame()
+        ag_data.append({"id":aid,"nombre":nombre,"ent_at":len(ea),"avg_dur":int(sum(durs)/len(durs)) if durs else 0,
             "total_min":int(sum(durs)/60),"salientes":len(sal_a),"per_turno":per_t})
-    ag_data.sort(key=lambda x: x["ent_at"], reverse=True)
-    cols3 = st.columns(3)
-    for i, ag in enumerate(ag_data):
+    ag_data.sort(key=lambda x:x["ent_at"],reverse=True)
+    cols3=st.columns(3)
+    for i,ag in enumerate(ag_data):
         with cols3[i%3]:
-            rank = ["🥇","🥈","🥉"][i] if i<3 else f"#{i+1}"
-            tot = ag["ent_at"]+ag["per_turno"]; pct=round(ag["ent_at"]/tot*100) if tot else 0
-            bc  = c["green"] if pct>=70 else c["yellow"] if pct>=40 else c["red"]
-            bc_dim = c["green_dim"] if pct>=70 else c["yellow_dim"] if pct>=40 else c["red_dim"]
-            items_html = "".join([
-                "<div style='background:" + c["card2"] + ";border-radius:6px;padding:6px;text-align:center'>"
-                "<div style='color:" + c["muted2"] + ";font-size:9px'>" + l + "</div>"
-                "<div style='color:" + c["muted"] + ";margin-top:2px'>" + v + "</div></div>"
-                for l,v in [("DUR.PROM",fmt_dur(ag["avg_dur"])),("SALIENTES",str(ag["salientes"])),("PERD.TURNO",str(ag["per_turno"]))]])
-            st.markdown(
-                "<div style='background:" + c["card"] + ";border:1px solid " + c["border"] + ";"
-                "border-left:3px solid " + bc + ";border-radius:10px;padding:16px;margin-bottom:12px'>"
-                "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px'>"
-                "<div><div style='font-size:14px;color:" + c["text"] + ";font-weight:500'>" + rank + " " + ag["nombre"] + "</div>"
-                "<div style='font-size:10px;color:" + c["muted2"] + ";font-family:JetBrains Mono,monospace'>ID " + ag["id"] + "</div></div>"
-                "<div style='text-align:right'><div style='font-size:26px;font-weight:300;color:" + bc + "'>" + str(ag["ent_at"]) + "</div>"
-                "<div style='font-size:10px;color:" + c["muted2"] + "'>atendidas</div></div></div>"
-                "<div style='background:" + c["border"] + ";border-radius:4px;height:4px;margin-bottom:10px'>"
-                "<div style='width:" + str(pct) + "%;height:100%;background:" + bc + ";border-radius:4px'></div></div>"
-                "<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:11px;font-family:JetBrains Mono,monospace'>"
-                + items_html + "</div></div>",
-                unsafe_allow_html=True)
+            rank=["🥇","🥈","🥉"][i] if i<3 else f"#{i+1}"
+            tot=ag["ent_at"]+ag["per_turno"]; pct=round(ag["ent_at"]/tot*100) if tot else 0
+            bc=c["green"] if pct>=70 else c["yellow"] if pct>=40 else c["red"]
+            bc_dim=c["green_dim"] if pct>=70 else c["yellow_dim"] if pct>=40 else c["red_dim"]
+            st.markdown(f"""<div style='background:{c['card']};border:1px solid {c['border']};border-left:3px solid {bc};border-radius:10px;padding:16px;margin-bottom:12px'>
+              <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px'>
+                <div><div style='font-size:14px;color:{c['text']};font-weight:500'>{rank} {ag['nombre']}</div>
+                  <div style='font-size:10px;color:{c['muted2']};font-family:JetBrains Mono,monospace'>ID {ag['id']}</div></div>
+                <div style='text-align:right'><div style='font-size:26px;font-weight:300;color:{bc}'>{ag['ent_at']}</div>
+                  <div style='font-size:10px;color:{c['muted2']}'>atendidas</div></div></div>
+              <div style='background:{c['border']};border-radius:4px;height:4px;margin-bottom:10px'>
+                <div style='width:{pct}%;height:100%;background:{bc};border-radius:4px'></div></div>
+              <div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:11px;font-family:JetBrains Mono,monospace'>
+                {"".join([f"<div style='background:{c['card2']};border-radius:6px;padding:6px;text-align:center'><div style='color:{c['muted2']};font-size:9px'>{l}</div><div style='color:{c['muted']};margin-top:2px'>{v}</div></div>" for l,v in [("DUR.PROM",fmt_dur(ag['avg_dur'])),("SALIENTES",ag['salientes']),("PERD.TURNO",ag['per_turno'])]])}
+              </div></div>""",unsafe_allow_html=True)
     if ag_data:
-        st.markdown("---"); df_ap = pd.DataFrame(ag_data)
-        gc1,gc2 = st.columns(2)
+        st.markdown("---"); df_ap=pd.DataFrame(ag_data)
+        gc1,gc2=st.columns(2)
         with gc1:
-            fig_c = go.Figure()
+            fig_c=go.Figure()
             fig_c.add_trace(go.Bar(name="Atendidas",x=df_ap["nombre"],y=df_ap["ent_at"],marker_color=c["bar_green"],marker_line_width=0))
             fig_c.add_trace(go.Bar(name="Salientes",x=df_ap["nombre"],y=df_ap["salientes"],marker_color=c["bar_dark"],marker_line_width=0))
-            fig_c.update_layout(height=280, barmode="group", **P, xaxis_title="",
-                yaxis=dict(gridcolor=c["grid"],title=""),
-                legend=dict(font_size=11,orientation="h",y=-0.2),
-                title=dict(text="Comparativa",font=dict(size=12,color=c["muted"]),x=0))
-            st.plotly_chart(fig_c, use_container_width=True)
+            fig_c.update_layout(height=280,barmode="group",**P,xaxis_title="",yaxis=dict(gridcolor=c["grid"],title=""),
+                legend=dict(font_size=11,orientation="h",y=-0.2),title=dict(text="Comparativa",font=dict(size=12,color=c["muted"]),x=0))
+            st.plotly_chart(fig_c,use_container_width=True)
         with gc2:
-            fig_d2 = px.bar(df_ap[df_ap["avg_dur"]>0].sort_values("avg_dur"),
-                x="avg_dur", y="nombre", orientation="h", color="avg_dur",
-                color_continuous_scale=[c["plot_bg"],c["bar_blue"],"#93C5FD"])
-            fig_d2.update_layout(height=280, coloraxis_showscale=False, **P,
-                xaxis=dict(gridcolor=c["grid"],title="seg"), yaxis_title="",
-                title=dict(text="Duración promedio",font=dict(size=12,color=c["muted"]),x=0))
-            fig_d2.update_traces(marker_line_width=0); st.plotly_chart(fig_d2, use_container_width=True)
+            fig_d2=px.bar(df_ap[df_ap["avg_dur"]>0].sort_values("avg_dur"),x="avg_dur",y="nombre",orientation="h",
+                color="avg_dur",color_continuous_scale=[c["plot_bg"],c["bar_blue"],"#93C5FD"])
+            fig_d2.update_layout(height=280,coloraxis_showscale=False,**P,
+                xaxis=dict(gridcolor=c["grid"],title="seg"),yaxis_title="",title=dict(text="Duración promedio",font=dict(size=12,color=c["muted"]),x=0))
+            fig_d2.update_traces(marker_line_width=0); st.plotly_chart(fig_d2,use_container_width=True)
 
-# ── TAB 4: TURNOS ──────────────────────────────────────────────────────────────
 with tab_tur:
     if df_ent.empty: st.info("Sin datos.")
     else:
-        DIAS_NOM = {0:"Lun",1:"Mar",2:"Mié",3:"Jue",4:"Vie",5:"Sáb",6:"Dom"}
-        turno_rows = []
+        DIAS_NOM={0:"Lun",1:"Mar",2:"Mié",3:"Jue",4:"Vie",5:"Sáb",6:"Dom"}
+        turno_rows=[]
         for t in st.session_state.cfg_turnos:
-            h_fin_str = f"{t['h_fin']}h" if t['h_fin']<=24 else f"{t['h_fin']-24}h(+1)"
-            dids_lbl  = ", ".join(t.get("dids") or []) or "Todos"
-            turno_rows.append({"Días":", ".join(DIAS_NOM[d] for d in t.get("dias",[])),
-                "Horario":f"{t['h_ini']}:00–{h_fin_str}","Agente":t["agente"],
-                "Canal":dids_lbl,"Estado":"✅" if t.get("activo",True) else "⏸"})
-        st.dataframe(pd.DataFrame(turno_rows), use_container_width=True, hide_index=True, height=280)
+            h_fin_str=f"{t['h_fin']}h" if t['h_fin']<=24 else f"{t['h_fin']-24}h(+1)"
+            turno_rows.append({"Días":", ".join(DIAS_NOM[d] for d in t["dias"]),"Horario":f"{t['h_ini']}:00–{h_fin_str}","Agente":t["agente"],"Estado":"✅" if t.get("activo",True) else "⏸"})
+        st.dataframe(pd.DataFrame(turno_rows),use_container_width=True,hide_index=True,height=250)
         st.markdown("---")
         if "responsable" in df_ent.columns:
-            ts = []
+            ts=[]
             for resp in sorted(df_ent["responsable"].dropna().unique()):
-                sub = df_ent[df_ent["responsable"]==resp]; tot=len(sub); at=int((sub["atendida"]==True).sum())
-                drs = sub[sub["atendida"]==True]["duracion"].dropna() if "duracion" in sub.columns else pd.Series()
-                ts.append({"Responsable":resp,"Total":tot,"Atendidas":at,"Perdidas":tot-at,
-                    "% Atención":round(at/tot*100) if tot else 0,
-                    "Dur. prom.":fmt_dur(int(drs.mean()) if len(drs) else 0)})
-            df_ts = pd.DataFrame(ts).sort_values("% Atención", ascending=False)
-            st.dataframe(df_ts, use_container_width=True, hide_index=True)
-            tc1,tc2 = st.columns(2)
+                sub=df_ent[df_ent["responsable"]==resp]; tot=len(sub); at=int((sub["atendida"]==True).sum())
+                drs=sub[sub["atendida"]==True]["duracion"].dropna() if "duracion" in sub.columns else pd.Series()
+                ts.append({"Responsable":resp,"Total":tot,"Atendidas":at,"Perdidas":tot-at,"% Atención":round(at/tot*100) if tot else 0,"Dur. prom.":fmt_dur(int(drs.mean()) if len(drs) else 0)})
+            df_ts=pd.DataFrame(ts).sort_values("% Atención",ascending=False)
+            st.dataframe(df_ts,use_container_width=True,hide_index=True)
+            tc1,tc2=st.columns(2)
             with tc1:
-                fig_tr = go.Figure()
+                fig_tr=go.Figure()
                 fig_tr.add_trace(go.Bar(name="Atendidas",x=df_ts["Responsable"],y=df_ts["Atendidas"],marker_color=c["bar_green"],marker_line_width=0))
-                fig_tr.add_trace(go.Bar(name="Perdidas", x=df_ts["Responsable"],y=df_ts["Perdidas"], marker_color=c["bar_red"],  marker_line_width=0))
-                fig_tr.update_layout(height=300, barmode="stack", **P,
-                    xaxis=dict(tickangle=-20,tickfont_size=11), yaxis=dict(gridcolor=c["grid"],title=""),
-                    legend=dict(font_size=11,orientation="h",y=-0.2),
-                    title=dict(text="Por responsable",font=dict(size=12,color=c["muted"]),x=0))
-                st.plotly_chart(fig_tr, use_container_width=True)
+                fig_tr.add_trace(go.Bar(name="Perdidas", x=df_ts["Responsable"],y=df_ts["Perdidas"], marker_color=c["bar_red"],marker_line_width=0))
+                fig_tr.update_layout(height=300,barmode="stack",**P,xaxis=dict(tickangle=-20,tickfont_size=11),
+                    yaxis=dict(gridcolor=c["grid"],title=""),legend=dict(font_size=11,orientation="h",y=-0.2),
+                    title=dict(text="Llamadas por responsable",font=dict(size=12,color=c["muted"]),x=0))
+                st.plotly_chart(fig_tr,use_container_width=True)
             with tc2:
-                fig_pct = px.bar(df_ts.sort_values("% Atención"), x="% Atención", y="Responsable",
-                    orientation="h", color="% Atención",
-                    color_continuous_scale=[c["bar_red"],"#F59E0B",c["bar_green"]], range_color=[0,100], text="% Atención")
-                fig_pct.update_traces(marker_line_width=0, texttemplate="%{text}%", textposition="outside",
-                    textfont=dict(size=11,color=c["muted"]))
-                fig_pct.update_layout(height=300, coloraxis_showscale=False, **P,
-                    xaxis=dict(gridcolor=c["grid"],title="",range=[0,115]), yaxis_title="",
+                fig_pct=px.bar(df_ts.sort_values("% Atención"),x="% Atención",y="Responsable",orientation="h",
+                    color="% Atención",color_continuous_scale=[c["bar_red"],"#F59E0B",c["bar_green"]],range_color=[0,100],text="% Atención")
+                fig_pct.update_traces(marker_line_width=0,texttemplate="%{text}%",textposition="outside",textfont=dict(size=11,color=c["muted"]))
+                fig_pct.update_layout(height=300,coloraxis_showscale=False,**P,
+                    xaxis=dict(gridcolor=c["grid"],title="",range=[0,115]),yaxis_title="",
                     title=dict(text="% Atención",font=dict(size=12,color=c["muted"]),x=0))
-                st.plotly_chart(fig_pct, use_container_width=True)
+                st.plotly_chart(fig_pct,use_container_width=True)
 
-# ── TAB 5: SEGUIMIENTO ─────────────────────────────────────────────────────────
 with tab_seg:
     st.markdown(f"#### 📋 Seguimiento — ventana de **{st.session_state.cfg_ventana_cb} min**")
-    df_cb = df_cb_kpi
+    st.markdown(f"""<div style='background:{c['primary_dim']};border:1px solid {c['primary_border']};border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:{c['primary']}'>
+    <b>Cumplimiento</b> si en ≤{st.session_state.cfg_ventana_cb} min: el agente llamó de vuelta o el cliente volvió y fue atendido.</div>""",unsafe_allow_html=True)
+    df_cb=df_cb_kpi  # ya calculado
     if df_cb.empty: st.info("No hay llamadas perdidas con responsabilidad de agente.")
     else:
         total_per=len(df_cb); cumpl=int(df_cb["Cumplimiento"].sum()); no_cumpl=total_per-cumpl
         pct_cumpl=round(cumpl/total_per*100) if total_per else 0
-        avg_t = df_cb[df_cb["_seg"].notna()]["_seg"].mean()
-        sc1,sc2,sc3,sc4 = st.columns(4)
-        sc1.metric("Perdidas c/responsable", f"{total_per:,}")
-        sc2.metric("✅ Con resolución",       f"{cumpl:,}",   f"{pct_cumpl}%")
-        sc3.metric("❌ Sin resolución",       f"{no_cumpl:,}",f"-{100-pct_cumpl}%")
-        sc4.metric("T. prom. respuesta",     fmt_dur(int(avg_t)) if not pd.isna(avg_t) else "—")
+        avg_t=df_cb[df_cb["_seg"].notna()]["_seg"].mean()
+        sc1,sc2,sc3,sc4=st.columns(4)
+        sc1.metric("Perdidas c/responsable",f"{total_per:,}")
+        sc2.metric("✅ Con resolución",      f"{cumpl:,}",  f"{pct_cumpl}%")
+        sc3.metric("❌ Sin resolución",      f"{no_cumpl:,}",f"-{100-pct_cumpl}%")
+        sc4.metric("T. prom. respuesta",    fmt_dur(int(avg_t)) if not pd.isna(avg_t) else "—")
         if "Responsable" in df_cb.columns:
-            cb_ag = df_cb.groupby(["Responsable","Cumplimiento"]).size().reset_index(name="n")
-            cb_ag["estado"] = cb_ag["Cumplimiento"].map({True:"✅ Resuelto",False:"❌ Sin resolver"})
-            fig_cb = px.bar(cb_ag, x="Responsable", y="n", color="estado", barmode="stack",
+            cb_ag=df_cb.groupby(["Responsable","Cumplimiento"]).size().reset_index(name="n")
+            cb_ag["estado"]=cb_ag["Cumplimiento"].map({True:"✅ Resuelto",False:"❌ Sin resolver"})
+            fig_cb=px.bar(cb_ag,x="Responsable",y="n",color="estado",barmode="stack",
                 color_discrete_map={"✅ Resuelto":c["bar_green"],"❌ Sin resolver":c["bar_red"]})
-            fig_cb.update_layout(height=260, **P, xaxis_title="", yaxis=dict(gridcolor=c["grid"],title=""),
-                legend=dict(font_size=11,orientation="h",y=-0.2),
-                title=dict(text="Cumplimiento por responsable",font=dict(size=12,color=c["muted"]),x=0))
-            fig_cb.update_traces(marker_line_width=0); st.plotly_chart(fig_cb, use_container_width=True)
-        sf1,sf2,sf3 = st.columns([2,1,1])
-        with sf1: busq_cb = st.text_input("🔍 Buscar", key="busq_cb")
-        with sf2: f_resp  = st.selectbox("Responsable", ["Todos"]+sorted(df_cb["Responsable"].dropna().unique().tolist()), key="fresp_cb")
-        with sf3: f_cumpl = st.selectbox("Estado", ["Todos","✅ Resuelto","❌ Sin resolver"], key="fcumpl_cb")
-        dcb = df_cb.copy()
-        if busq_cb:               dcb = dcb[dcb["Número"].str.contains(busq_cb,na=False)]
-        if f_resp!="Todos":       dcb = dcb[dcb["Responsable"]==f_resp]
-        if f_cumpl=="✅ Resuelto": dcb = dcb[dcb["Cumplimiento"]==True]
-        elif f_cumpl=="❌ Sin resolver": dcb = dcb[dcb["Cumplimiento"]==False]
-        st.dataframe(dcb.drop(columns=["Cumplimiento","_seg"],errors="ignore"),
-                     use_container_width=True, height=440, hide_index=True)
-        st.download_button("⬇ Exportar", data=dcb.drop(columns=["_seg"],errors="ignore").to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"seguimiento_{hoy_lima.strftime('%Y%m%d')}.csv", mime="text/csv")
+            fig_cb.update_layout(height=260,**P,xaxis_title="",yaxis=dict(gridcolor=c["grid"],title=""),
+                legend=dict(font_size=11,orientation="h",y=-0.2),title=dict(text="Cumplimiento por responsable",font=dict(size=12,color=c["muted"]),x=0))
+            fig_cb.update_traces(marker_line_width=0); st.plotly_chart(fig_cb,use_container_width=True)
+        sf1,sf2,sf3=st.columns([2,1,1])
+        with sf1: busq_cb=st.text_input("🔍 Buscar",key="busq_cb")
+        with sf2: f_resp=st.selectbox("Responsable",["Todos"]+sorted(df_cb["Responsable"].dropna().unique().tolist()),key="fresp_cb")
+        with sf3: f_cumpl=st.selectbox("Estado",["Todos","✅ Resuelto","❌ Sin resolver"],key="fcumpl_cb")
+        dcb=df_cb.copy()
+        if busq_cb: dcb=dcb[dcb["Número"].str.contains(busq_cb,na=False)]
+        if f_resp!="Todos": dcb=dcb[dcb["Responsable"]==f_resp]
+        if f_cumpl=="✅ Resuelto": dcb=dcb[dcb["Cumplimiento"]==True]
+        elif f_cumpl=="❌ Sin resolver": dcb=dcb[dcb["Cumplimiento"]==False]
+        st.dataframe(dcb.drop(columns=["Cumplimiento","_seg"],errors="ignore"),use_container_width=True,height=440,hide_index=True)
+        st.download_button("⬇ Exportar",data=dcb.drop(columns=["_seg"],errors="ignore").to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"seguimiento_{hoy_lima.strftime('%Y%m%d')}.csv",mime="text/csv")
 
-# ── TAB 6: CLIENTES ────────────────────────────────────────────────────────────
 with tab_cl:
     if df_ent.empty: st.info("Sin datos.")
     else:
-        cl = df_ent.groupby("numero_cliente").agg(
-            total=("numero_cliente","count"), atendidas=("atendida","sum"),
-            ultima=("detect_time","max"),
-            ag_frec=("agente", lambda x: x[x!="Sin atender"].mode().iloc[0] if not x[x!="Sin atender"].empty else "—"),
-        ).reset_index()
-        cl["perdidas"] = cl["total"]-cl["atendidas"]
-        cl["pct_at"]   = (cl["atendidas"]/cl["total"]*100).round(0).astype(int)
-        cl = cl.sort_values("total", ascending=False)
-        cp = cl[cl["perdidas"]>=2].sort_values("perdidas", ascending=False).head(10)
+        cl=df_ent.groupby("numero_cliente").agg(total=("numero_cliente","count"),atendidas=("atendida","sum"),
+            ultima=("detect_time","max"),ag_frec=("agente",lambda x: x[x!="Sin atender"].mode().iloc[0] if not x[x!="Sin atender"].empty else "—")).reset_index()
+        cl["perdidas"]=cl["total"]-cl["atendidas"]; cl["pct_at"]=(cl["atendidas"]/cl["total"]*100).round(0).astype(int)
+        cl=cl.sort_values("total",ascending=False)
+        cp=cl[cl["perdidas"]>=2].sort_values("perdidas",ascending=False).head(10)
         if not cp.empty:
             st.markdown("#### ⚠️ Clientes con 2+ perdidas")
-            for _, row in cp.iterrows():
-                urg = "🔴" if row["perdidas"]>=5 else "🟡" if row["perdidas"]>=3 else "🟠"
-                st.markdown(
-                    "<div style='background:" + c["card"] + ";border:1px solid " + c["red_border"] + ";"
-                    "border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between'>"
-                    "<div><span style='color:" + c["text"] + ";font-family:JetBrains Mono,monospace'>" + urg + " " + str(row["numero_cliente"]) + "</span>"
-                    "<span style='color:" + c["muted2"] + ";font-size:11px;margin-left:12px'>" + (str(row["ultima"])[:16] if pd.notna(row["ultima"]) else "—") + "</span></div>"
-                    "<div style='font-size:12px;font-family:JetBrains Mono,monospace'>"
-                    "<span style='color:" + c["red"] + "'>" + str(int(row["perdidas"])) + " perdidas</span>"
-                    "<span style='color:" + c["muted2"] + ";margin-left:10px'>de " + str(int(row["total"])) + "</span></div></div>",
-                    unsafe_allow_html=True)
-        fig_cl = px.bar(cl.head(15).sort_values("total"), x="total", y="numero_cliente", orientation="h",
-            color="pct_at", color_continuous_scale=[c["bar_red"],"#F59E0B",c["bar_green"]], range_color=[0,100])
-        fig_cl.update_layout(height=360, **P,
-            xaxis=dict(gridcolor=c["grid"],title="Llamadas"), yaxis_title="",
+            for _,row in cp.iterrows():
+                urg="🔴" if row["perdidas"]>=5 else "🟡" if row["perdidas"]>=3 else "🟠"
+                st.markdown(f"""<div style='background:{c['card']};border:1px solid {c['red_border']};border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between'>
+                  <div><span style='color:{c['text']};font-family:JetBrains Mono,monospace'>{urg} {row['numero_cliente']}</span>
+                  <span style='color:{c['muted2']};font-size:11px;margin-left:12px'>{str(row['ultima'])[:16] if pd.notna(row['ultima']) else '—'}</span></div>
+                  <div style='font-size:12px;font-family:JetBrains Mono,monospace'>
+                    <span style='color:{c['red']}'>{int(row['perdidas'])} perdidas</span>
+                    <span style='color:{c['muted2']};margin-left:10px'>de {int(row['total'])}</span></div>
+                </div>""",unsafe_allow_html=True)
+        fig_cl=px.bar(cl.head(15).sort_values("total"),x="total",y="numero_cliente",orientation="h",
+            color="pct_at",color_continuous_scale=[c["bar_red"],"#F59E0B",c["bar_green"]],range_color=[0,100])
+        fig_cl.update_layout(height=360,**P,xaxis=dict(gridcolor=c["grid"],title="Llamadas"),yaxis_title="",
             coloraxis_colorbar=dict(title="% At.",tickfont_size=10,len=0.7))
-        fig_cl.update_traces(marker_line_width=0); st.plotly_chart(fig_cl, use_container_width=True)
-        cl_s = cl[["numero_cliente","total","atendidas","perdidas","pct_at","ag_frec","ultima"]].copy()
-        cl_s["ultima"] = cl_s["ultima"].astype(str).str[:16]
-        cl_s = cl_s.rename(columns={"numero_cliente":"Número","total":"Total","atendidas":"Atendidas",
-            "perdidas":"Perdidas","pct_at":"% At.","ag_frec":"Agente frecuente","ultima":"Última"})
-        st.dataframe(cl_s, use_container_width=True, height=320, hide_index=True)
+        fig_cl.update_traces(marker_line_width=0); st.plotly_chart(fig_cl,use_container_width=True)
+        cl_s=cl[["numero_cliente","total","atendidas","perdidas","pct_at","ag_frec","ultima"]].copy()
+        cl_s["ultima"]=cl_s["ultima"].astype(str).str[:16]
+        cl_s=cl_s.rename(columns={"numero_cliente":"Número","total":"Total","atendidas":"Atendidas","perdidas":"Perdidas","pct_at":"% At.","ag_frec":"Agente frecuente","ultima":"Última"})
+        st.dataframe(cl_s,use_container_width=True,height=320,hide_index=True)
 
-# ── TAB 7: REGISTROS RAW ───────────────────────────────────────────────────────
 with tab_raw_t:
     st.markdown("#### Registros sin procesar")
     if df_raw is not None and not df_raw.empty:
-        busq_r = st.text_input("Buscar", key="busq_raw")
-        dr = df_raw.copy()
+        busq_r=st.text_input("Buscar",key="busq_raw")
+        dr=df_raw.copy()
         if busq_r:
-            mask = pd.Series([False]*len(dr))
+            mask=pd.Series([False]*len(dr))
             for cx in ["ani","dnis","callid","original_callid","ani_user","dnis_user"]:
-                if cx in dr.columns: mask |= dr[cx].astype(str).str.contains(busq_r,case=False,na=False)
-            dr = dr[mask]
-        cols_r = [cx for cx in ["detect_time","type","ani","dnis","ani_user","dnis_user",
-                                  "duration","ring_time","end_reason","connect_time","original_callid"] if cx in dr.columns]
-        rs1,rs2,rs3,rs4 = st.columns(4)
-        rs1.metric("Total",    f"{len(df_raw):,}")
-        rs2.metric("Dur>0",    f"{int((df_raw['duration']>0).sum()):,}" if "duration" in df_raw.columns else "—")
-        rs3.metric("Incoming", f"{int((df_raw['type']=='incoming').sum()):,}" if "type" in df_raw.columns else "—")
-        rs4.metric("Outgoing", f"{int((df_raw['type']=='outgoing').sum()):,}" if "type" in df_raw.columns else "—")
-        st.dataframe(dr[cols_r], use_container_width=True, height=460, hide_index=True)
-        st.download_button("⬇ Exportar raw",
-            data=dr[cols_r].to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"raw_{hoy_lima.strftime('%Y%m%d_%H%M')}.csv", mime="text/csv")
+                if cx in dr.columns: mask|=dr[cx].astype(str).str.contains(busq_r,case=False,na=False)
+            dr=dr[mask]
+        cols_r=[cx for cx in ["detect_time","type","ani","dnis","ani_user","dnis_user","duration","ring_time","end_reason","connect_time","original_callid"] if cx in dr.columns]
+        rs1,rs2,rs3,rs4=st.columns(4)
+        rs1.metric("Total",f"{len(df_raw):,}"); rs2.metric("Dur>0",f"{int((df_raw['duration']>0).sum()):,}" if "duration" in df_raw.columns else "—")
+        rs3.metric("Incoming",f"{int((df_raw['type']=='incoming').sum()):,}" if "type" in df_raw.columns else "—")
+        rs4.metric("Outgoing",f"{int((df_raw['type']=='outgoing').sum()):,}" if "type" in df_raw.columns else "—")
+        st.dataframe(dr[cols_r],use_container_width=True,height=460,hide_index=True)
+        st.download_button("⬇ Exportar raw",data=dr[cols_r].to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"raw_{hoy_lima.strftime('%Y%m%d_%H%M')}.csv",mime="text/csv")
