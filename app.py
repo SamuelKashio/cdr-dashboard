@@ -340,8 +340,22 @@ def clasificar_entrantes(df_inc):
         esc="colgó_en_ivr" if er=="CANCELLED" else "agente_no_disponible" if er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE") else "no_enrutada"
         _append(orig_cid,detect_time,ani_cliente,False,None,0,0,0,er,esc)
     if not resultados: return pd.DataFrame()
-    df=pd.DataFrame(resultados)
-    df["agente_turno"]=df.apply(lambda r: agente_de_turno(r["detect_time"], r.get("dnis_marcado")), axis=1)
+    df = pd.DataFrame(resultados)
+
+    # Asegurar que dnis_marcado existe como columna
+    if "dnis_marcado" not in df.columns:
+        df["dnis_marcado"] = ""
+
+    def _safe_turno(row):
+        try:
+            dt  = row["detect_time"]
+            did = row.get("dnis_marcado", "")
+            did = None if (did is None or str(did).strip() == "" or (isinstance(did, float) and pd.isna(did))) else str(did).strip()
+            return agente_de_turno(dt, did)
+        except:
+            return "Sin turno"
+
+    df["agente_turno"] = df.apply(_safe_turno, axis=1)
     def calc_resp(r):
         if r["agente_turno"] in AGENTES_SIN_ID: return r["agente_turno"]
         return r["agente"] if r["atendida"] else r["agente_turno"]
