@@ -860,14 +860,20 @@ if _did_filtro and not df_ent.empty:
 # Banner del canal activo
 if _did_filtro:
     _info_did = _dids_cfg.get(_did_filtro, {})
+    _card_c   = c["card"]
+    _brd_c    = c["border"]
+    _pri_c    = c["primary"]
+    _txt_c    = c["text"]
+    _m2_c     = c["muted2"]
+    _bnd      = _info_did.get("bandera","")
+    _pais     = _info_did.get("pais","")
     st.markdown(
-        f"<div style='background:{c['card']};border:1px solid {c['border']};"
-        f"border-left:3px solid {c['primary']};border-radius:8px;padding:10px 16px;"
+        f"<div style='background:{_card_c};border:1px solid {_brd_c};"
+        f"border-left:3px solid {_pri_c};border-radius:8px;padding:10px 16px;"
         f"margin-bottom:8px;display:flex;align-items:center;gap:12px'>"
-        f"<span style='font-size:22px'>{_info_did.get('bandera','')}</span>"
-        f"<div><div style='color:{c['text']};font-weight:500'>"
-        f"{_info_did.get('pais','')} · DID {_did_filtro}</div>"
-        f"<div style='color:{c['muted2']};font-size:12px;font-family:JetBrains Mono,monospace'>"
+        f"<span style='font-size:22px'>{_bnd}</span>"
+        f"<div><div style='color:{_txt_c};font-weight:500'>{_pais} · DID {_did_filtro}</div>"
+        f"<div style='color:{_m2_c};font-size:12px;font-family:JetBrains Mono,monospace'>"
         f"Mostrando solo llamadas de este canal</div></div></div>",
         unsafe_allow_html=True)
 
