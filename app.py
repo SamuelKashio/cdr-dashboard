@@ -844,34 +844,34 @@ for _did_k, _did_v in _dids_cfg.items():
         _did_by_label[f"{_did_v['bandera']} {_did_v['pais']}"] = _did_k
 
 _canal_idx = _canal_opts.index(st.session_state.canal_sel) if st.session_state.canal_sel in _canal_opts else 0
-
-ca1, ca2, ca3 = st.columns([3,1,1])
-with ca1:
-    _canal_nuevo = st.radio("Canal de atención", _canal_opts, index=_canal_idx, horizontal=True, label_visibility="collapsed")
-    if _canal_nuevo != st.session_state.canal_sel:
-        st.session_state.canal_sel = _canal_nuevo
-        st.rerun()
+_canal_nuevo = st.radio("Canal de atención", _canal_opts, index=_canal_idx, horizontal=True, label_visibility="collapsed")
+if _canal_nuevo != st.session_state.canal_sel:
+    st.session_state.canal_sel = _canal_nuevo
+    st.rerun()
 
 _did_filtro = _did_by_label.get(st.session_state.canal_sel)
 
-# Aplicar filtro por DID
-if _did_filtro and not df_ent.empty and "dnis_marcado" in df_ent.columns:
-    df_ent = df_ent[df_ent["dnis_marcado"] == _did_filtro]
-if _did_filtro and not df_sal.empty:
-    pass  # Salientes no tienen DID entrante, no filtrar
+# Aplicar filtro por DID de forma defensiva
+if _did_filtro and not df_ent.empty:
+    if "dnis_marcado" in df_ent.columns:
+        df_ent = df_ent[df_ent["dnis_marcado"] == _did_filtro].copy()
+    # Si no existe la columna, no filtrar (datos viejos cacheados)
 
-# Mostrar info del canal activo
+# Banner del canal activo
 if _did_filtro:
     _info_did = _dids_cfg.get(_did_filtro, {})
     st.markdown(
-        f"<div style='background:{c['card']};border:1px solid {c['border']};border-left:3px solid {c['primary']};border-radius:8px;padding:10px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px'>"
+        f"<div style='background:{c['card']};border:1px solid {c['border']};"
+        f"border-left:3px solid {c['primary']};border-radius:8px;padding:10px 16px;"
+        f"margin-bottom:8px;display:flex;align-items:center;gap:12px'>"
         f"<span style='font-size:22px'>{_info_did.get('bandera','')}</span>"
-        f"<div><div style='color:{c['text']};font-weight:500'>{_info_did.get('pais','')} · DID +{_did_filtro}</div>"
-        f"<div style='color:{c['muted2']};font-size:12px;font-family:JetBrains Mono,monospace'>{_did_filtro}</div></div>"
-        f"</div>",
-        unsafe_allow_html=True
-    )
-st.markdown("<br>",unsafe_allow_html=True)
+        f"<div><div style='color:{c['text']};font-weight:500'>"
+        f"{_info_did.get('pais','')} · DID {_did_filtro}</div>"
+        f"<div style='color:{c['muted2']};font-size:12px;font-family:JetBrains Mono,monospace'>"
+        f"Mostrando solo llamadas de este canal</div></div></div>",
+        unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
 tab_ov,tab_ent,tab_sal,tab_ag,tab_tur,tab_seg,tab_cl,tab_raw_t=tabs
 
 with tab_ov:
