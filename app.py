@@ -26,16 +26,25 @@ DEFAULT_AGENTES = {
     "8668111":{"nombre":"Deivy Chavez",   "activo":True, "es_central":False},
     "8668114":{"nombre":"Joe Villanueva", "activo":True, "es_central":False},
     "8672537":{"nombre":"Victor Figueroa","activo":True, "es_central":False},
+    "PENDIENTE_MACEDO":{"nombre":"Victor Macedo","activo":True,"es_central":False},
 }
 DEFAULT_TURNOS = [
-    {"dias":[0,1,2,3,4],"h_ini": 6,"h_fin":14,"agente":"Alonso Loyola",    "activo":True},
-    {"dias":[0,1,2,3,4],"h_ini":14,"h_fin":22,"agente":"Jose Luis Cahuana","activo":True},
-    {"dias":[0,1,2,3,4],"h_ini":22,"h_fin":30,"agente":"Deivy Chavez",     "activo":True},
-    {"dias":[5,6],      "h_ini": 6,"h_fin":14,"agente":"Daniel Huayta",    "activo":True},
-    {"dias":[5,6],      "h_ini":14,"h_fin":22,"agente":"Luz Goicochea",    "activo":True},
-    {"dias":[5,6],      "h_ini":22,"h_fin":30,"agente":"Joe Villanueva",   "activo":True},
+    {"dias":[0,1,2,3,4],"h_ini": 6,"h_fin":14,"agente":"Alonso Loyola",    "activo":True, "dids":[]},
+    {"dias":[0,1,2,3,4],"h_ini":14,"h_fin":22,"agente":"Jose Luis Cahuana","activo":True, "dids":[]},
+    {"dias":[0,1,2,3,4],"h_ini":22,"h_fin":30,"agente":"Deivy Chavez",     "activo":True, "dids":[]},
+    {"dias":[5,6],      "h_ini": 6,"h_fin":14,"agente":"Daniel Huayta",    "activo":True, "dids":[]},
+    {"dias":[5,6],      "h_ini":14,"h_fin":22,"agente":"Luz Goicochea",    "activo":True, "dids":[]},
+    {"dias":[5,6],      "h_ini":22,"h_fin":30,"agente":"Joe Villanueva",   "activo":True, "dids":[]},
+    # Canal EE.UU.
+    {"dias":[0,1,2,3,4],"h_ini": 9,"h_fin":18,"agente":"Victor Macedo",   "activo":True, "dids":["7866715462"]},
 ]
 DEFAULT_NUMS_EXCLUIDOS = ["51902871550"]
+
+# ── DIDs / Canales ─────────────────────────────────────────────────────────────
+DEFAULT_DIDS = {
+    "5116429375": {"pais":"Perú",          "bandera":"🇵🇪", "activo":True},
+    "7866715462": {"pais":"Estados Unidos","bandera":"🇺🇸", "activo":True},
+}
 
 CONFIG_FILE = "config.json"
 def load_config():
@@ -45,10 +54,11 @@ def load_config():
             return (saved.get("agentes",json.loads(json.dumps(DEFAULT_AGENTES))),
                     saved.get("turnos",json.loads(json.dumps(DEFAULT_TURNOS))),
                     saved.get("nums_excluidos",list(DEFAULT_NUMS_EXCLUIDOS)),
-                    saved.get("ventana_cb",5), saved.get("modo_demo",False))
+                    saved.get("ventana_cb",5), saved.get("modo_demo",False),
+                    saved.get("dids",json.loads(json.dumps(DEFAULT_DIDS))))
         except: pass
     return (json.loads(json.dumps(DEFAULT_AGENTES)),json.loads(json.dumps(DEFAULT_TURNOS)),
-            list(DEFAULT_NUMS_EXCLUIDOS),5,False)
+            list(DEFAULT_NUMS_EXCLUIDOS),5,False,json.loads(json.dumps(DEFAULT_DIDS)))
 
 def save_config():
     try:
@@ -56,7 +66,8 @@ def save_config():
             json.dump({"agentes":st.session_state.cfg_agentes,"turnos":st.session_state.cfg_turnos,
                        "nums_excluidos":st.session_state.cfg_nums_excluidos,
                        "ventana_cb":st.session_state.cfg_ventana_cb,
-                       "modo_demo":st.session_state.cfg_modo_demo},f,ensure_ascii=False,indent=2)
+                       "modo_demo":st.session_state.cfg_modo_demo,
+                       "dids":st.session_state.cfg_dids},f,ensure_ascii=False,indent=2)
         return True
     except Exception as e: st.error(f"No se pudo guardar: {e}"); return False
 
@@ -157,13 +168,15 @@ st.set_page_config(page_title="Supervisor · Soporte",page_icon="🎯",layout="w
 
 # ── Session state ──────────────────────────────────────────────────────────────
 if "cfg_loaded" not in st.session_state:
-    _ag,_tu,_ne,_vc,_md = load_config()
+    _ag,_tu,_ne,_vc,_md,_di = load_config()
     st.session_state.cfg_agentes=_ag; st.session_state.cfg_turnos=_tu
     st.session_state.cfg_nums_excluidos=_ne; st.session_state.cfg_ventana_cb=_vc
-    st.session_state.cfg_modo_demo=_md; st.session_state.cfg_loaded=True
+    st.session_state.cfg_modo_demo=_md; st.session_state.cfg_dids=_di
+    st.session_state.cfg_loaded=True
 if "show_config"  not in st.session_state: st.session_state.show_config=False
 if "theme"        not in st.session_state: st.session_state.theme="dark"
 if "auto_loaded"  not in st.session_state: st.session_state.auto_loaded=False
+if "canal_sel"    not in st.session_state: st.session_state.canal_sel="Todos"
 for k in ["df_ent","df_sal","df_raw","df_live_raw","label","error","loaded"]:
     if k not in st.session_state: st.session_state[k]=None if k!="loaded" else False
 
@@ -265,13 +278,15 @@ def clasificar_entrantes(df_inc):
         if ref: trn_by_ref[ref]=row
     ag_orig_set=set(df_ag["original_callid"].unique()) if not df_ag.empty else set()
     resultados=[]
-    def _append(orig_cid,detect_time,ani_cliente,atendida,agente_id,duracion,ring_total,n_intentos,end_reason,escenario,agente_timbrando=None,espera_usuario=0):
+    def _append(orig_cid,detect_time,ani_cliente,atendida,agente_id,duracion,ring_total,n_intentos,end_reason,escenario,agente_timbrando=None,espera_usuario=0,dnis_marcado=""):
+        did_info = get_did_info(dnis_marcado)
         resultados.append({"original_callid":orig_cid,"detect_time":detect_time,"numero_cliente":ani_cliente,"atendida":atendida,
             "agente":get_agentes().get(str(agente_id),"Sin atender") if agente_id else "Sin atender","agente_id":agente_id,
             "agente_timbrando":get_agentes().get(str(agente_timbrando),"—") if agente_timbrando else "—",
             "espera_usuario":max(0,int(espera_usuario or 0)),"duracion":duracion,"espera_total":ring_total,
             "n_intentos":n_intentos,"end_reason":end_reason,"end_reason_es":END_REASONS.get(end_reason,end_reason),
             "escenario":escenario,"escenario_es":esc_es(escenario),
+            "dnis_marcado":dnis_marcado,"pais":did_info["pais"],"bandera":did_info["bandera"],
             "hora":detect_time.hour if pd.notna(detect_time) else None,
             "fecha":detect_time.date() if pd.notna(detect_time) else None})
     for orig_cid,ag_grp in (df_ag.groupby("original_callid") if not df_ag.empty else []):
@@ -307,7 +322,8 @@ def clasificar_entrantes(df_inc):
         esc="colgó_en_ivr" if er=="CANCELLED" else "agente_no_disponible" if er in ("TEMPORARILY_UNAVAILABLE","NOT_FOUND","SERVICE_UNAVAILABLE") else "no_enrutada"
         _append(orig_cid,detect_time,ani_cliente,False,None,0,0,0,er,esc)
     if not resultados: return pd.DataFrame()
-    df=pd.DataFrame(resultados); df["agente_turno"]=df["detect_time"].apply(agente_de_turno)
+    df=pd.DataFrame(resultados)
+    df["agente_turno"]=df.apply(lambda r: agente_de_turno(r["detect_time"], r.get("dnis_marcado")), axis=1)
     def calc_resp(r):
         if r["agente_turno"] in AGENTES_SIN_ID: return r["agente_turno"]
         return r["agente"] if r["atendida"] else r["agente_turno"]
@@ -378,7 +394,7 @@ def calcular_cumplimiento(df_ent,df_sal):
 def render_config(c):
     st.markdown(f"<h2 style='color:{c['text']}'>⚙️ Configuración</h2>",unsafe_allow_html=True)
     st.markdown("---")
-    cfg_tabs=st.tabs(["🔢 Agentes","📅 Turnos","🚫 Números excluidos","⚙️ General"])
+    cfg_tabs=st.tabs(["🔢 Agentes","📅 Turnos","🚫 Números excluidos","📞 Canales / DID","⚙️ General"])
     with cfg_tabs[0]:
         st.markdown("#### Gestión de agentes")
         for kid,val in list(st.session_state.cfg_agentes.items()):
@@ -443,6 +459,38 @@ def render_config(c):
             if st.button("➕",key="btn_add_exc"):
                 if nuevo_exc and nuevo_exc not in st.session_state.cfg_nums_excluidos:
                     st.session_state.cfg_nums_excluidos.append(nuevo_exc); st.rerun()
+
+    with cfg_tabs[4]:
+        st.markdown("#### Canales / números DID")
+        st.caption("Define los números DID activos y su país. Esto permite filtrar el dashboard por canal.")
+        for did_k, did_v in list(st.session_state.cfg_dids.items()):
+            dc1,dc2,dc3,dc4,dc5=st.columns([1.4,1.8,0.6,0.5,0.5])
+            with dc1: st.text_input("DID",value=did_k,disabled=True,key=f"did_id_{did_k}")
+            with dc2:
+                np_=st.text_input("País",value=did_v["pais"],key=f"did_pais_{did_k}")
+                st.session_state.cfg_dids[did_k]["pais"]=np_
+            with dc3:
+                bf_=st.text_input("🏳",value=did_v.get("bandera","🌐"),key=f"did_bf_{did_k}")
+                st.session_state.cfg_dids[did_k]["bandera"]=bf_
+            with dc4:
+                act_=st.checkbox("Activo",value=did_v.get("activo",True),key=f"did_act_{did_k}")
+                st.session_state.cfg_dids[did_k]["activo"]=act_
+            with dc5:
+                st.markdown("<br>",unsafe_allow_html=True)
+                if st.button("🗑",key=f"did_del_{did_k}"):
+                    del st.session_state.cfg_dids[did_k]; st.rerun()
+        st.markdown("---"); st.markdown("**Agregar nuevo DID**")
+        nd1,nd2,nd3,nd4=st.columns([1.5,1.8,0.6,0.8])
+        with nd1: new_did_num=st.text_input("Número DID",placeholder="5116429375",key="new_did_num")
+        with nd2: new_did_pais=st.text_input("País",placeholder="Perú",key="new_did_pais")
+        with nd3: new_did_bf=st.text_input("Bandera",placeholder="🇵🇪",key="new_did_bf")
+        with nd4:
+            st.markdown("<br>",unsafe_allow_html=True)
+            if st.button("➕ Agregar DID",key="btn_add_did"):
+                if new_did_num and new_did_num not in st.session_state.cfg_dids:
+                    st.session_state.cfg_dids[new_did_num]={"pais":new_did_pais,"bandera":new_did_bf or "🌐","activo":True}; st.rerun()
+        st.markdown("---")
+        st.info("💡 **Nota:** El turno de Victor Macedo está configurado exclusivamente para el canal EE.UU. (DID 7866715462). Cuando actualices su ID de endpoint en la pestaña Agentes, el sistema empezará a atribuirle las llamadas automáticamente.")
     with cfg_tabs[3]:
         st.markdown("#### Parámetros generales")
         st.session_state.cfg_ventana_cb=st.slider("Ventana de cumplimiento (min)",1,15,st.session_state.cfg_ventana_cb)
@@ -755,7 +803,43 @@ c8.metric("Dur. prom.",      fmt_dur(avg_dur))
 c9.metric("Espera prom.",    fmt_dur(avg_esp))
 st.markdown("<br>",unsafe_allow_html=True)
 
-tabs=st.tabs(["VISIÓN GENERAL","ENTRANTES","SALIENTES","AGENTES","TURNOS","SEGUIMIENTO","CLIENTES","REGISTROS"])
+# ── Selector de canal / país ───────────────────────────────────────────────────
+_dids_cfg = st.session_state.get("cfg_dids", DEFAULT_DIDS)
+_canal_opts = ["🌐 Todos"] + [f"{v['bandera']} {v['pais']}" for v in _dids_cfg.values() if v.get("activo",True)]
+_did_by_label = {"🌐 Todos": None}
+for _did_k, _did_v in _dids_cfg.items():
+    if _did_v.get("activo",True):
+        _did_by_label[f"{_did_v['bandera']} {_did_v['pais']}"] = _did_k
+
+_canal_idx = _canal_opts.index(st.session_state.canal_sel) if st.session_state.canal_sel in _canal_opts else 0
+
+ca1, ca2, ca3 = st.columns([3,1,1])
+with ca1:
+    _canal_nuevo = st.radio("Canal de atención", _canal_opts, index=_canal_idx, horizontal=True, label_visibility="collapsed")
+    if _canal_nuevo != st.session_state.canal_sel:
+        st.session_state.canal_sel = _canal_nuevo
+        st.rerun()
+
+_did_filtro = _did_by_label.get(st.session_state.canal_sel)
+
+# Aplicar filtro por DID
+if _did_filtro and not df_ent.empty and "dnis_marcado" in df_ent.columns:
+    df_ent = df_ent[df_ent["dnis_marcado"] == _did_filtro]
+if _did_filtro and not df_sal.empty:
+    pass  # Salientes no tienen DID entrante, no filtrar
+
+# Mostrar info del canal activo
+if _did_filtro:
+    _info_did = _dids_cfg.get(_did_filtro, {})
+    st.markdown(
+        f"<div style='background:{c['card']};border:1px solid {c['border']};border-left:3px solid {c['primary']};border-radius:8px;padding:10px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px'>"
+        f"<span style='font-size:22px'>{_info_did.get('bandera','')}</span>"
+        f"<div><div style='color:{c['text']};font-weight:500'>{_info_did.get('pais','')} · DID +{_did_filtro}</div>"
+        f"<div style='color:{c['muted2']};font-size:12px;font-family:JetBrains Mono,monospace'>{_did_filtro}</div></div>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+st.markdown("<br>",unsafe_allow_html=True)
 tab_ov,tab_ent,tab_sal,tab_ag,tab_tur,tab_seg,tab_cl,tab_raw_t=tabs
 
 with tab_ov:
