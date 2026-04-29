@@ -695,6 +695,46 @@ with st.sidebar:
         st.markdown("<div style='background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.4);"
                     "border-radius:6px;padding:6px 10px;text-align:center;font-size:11px;"
                     "color:#EAB308;margin-bottom:8px'>🧪 MODO DEMO</div>", unsafe_allow_html=True)
+    _card_c=c["card"]; _brd_c=c["border"]; _pri_c=c["primary"]; _txt_c=c["text"]; _m2_c=c["muted2"]
+    st.markdown(
+        "<div style='background:"+_card_c+";border:1px solid "+_brd_c+";border-radius:8px;"
+        "padding:10px 12px;margin-bottom:8px'>"
+        "<div style='color:"+_m2_c+";font-size:10px;font-family:JetBrains Mono,monospace'>CUENTA</div>"
+        "<div style='color:"+_pri_c+";font-size:13px;font-family:JetBrains Mono,monospace;margin-top:2px'>"+_U+"</div></div>",
+        unsafe_allow_html=True)
+    if st.button("⚙️ Configuración", use_container_width=True):
+        st.session_state.show_config = not st.session_state.show_config; st.rerun()
+    st.markdown("---")
+    fi = st.date_input("Desde",       value=(hoy_lima-timedelta(days=1)).date())
+    hi = st.time_input("Hora inicio",  value=datetime.strptime("00:00","%H:%M").time())
+    ff = st.date_input("Hasta",        value=hoy_lima.date())
+    hf = st.time_input("Hora fin",     value=datetime.strptime("23:59","%H:%M").time())
+    st.markdown("---")
+    _dids_sb = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
+    _canal_opts_sb = ["🌐 Todos"] + [
+        v["bandera"]+" "+v["pais"] for k,v in _dids_sb.items() if v.get("activo",True)]
+    _did_map_sb = {"🌐 Todos": None}
+    for _ks,_vs in _dids_sb.items():
+        if _vs.get("activo",True): _did_map_sb[_vs["bandera"]+" "+_vs["pais"]] = _ks
+    _idx_sb = _canal_opts_sb.index(st.session_state.canal_sel) if st.session_state.canal_sel in _canal_opts_sb else 0
+    canal_sel_sb = st.selectbox("🌍 Canal", _canal_opts_sb, index=_idx_sb, key="canal_sb")
+    if canal_sel_sb != st.session_state.canal_sel:
+        st.session_state.canal_sel = canal_sel_sb
+    st.markdown("---")
+    _sb1, _sb2 = st.columns(2)
+    with _sb1: btn_ok  = st.button("⟳ Consultar", type="primary", use_container_width=True)
+    with _sb2: btn_hoy = st.button("Hoy",          use_container_width=True)
+    st.markdown("---")
+    live_mode = st.toggle("🔴 Modo en vivo", value=False)
+    intervalo = st.slider("Refrescar cada (seg)", 5, 60, 15) if live_mode else 15
+    st.markdown("## 🎯 Supervisor · Soporte")
+    is_light = st.toggle("☀️ Modo claro", value=st.session_state.theme=="light", key="theme_toggle")
+    st.session_state.theme = "light" if is_light else "dark"
+    c = T[st.session_state.theme]
+    if st.session_state.cfg_modo_demo:
+        st.markdown("<div style='background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.4);"
+                    "border-radius:6px;padding:6px 10px;text-align:center;font-size:11px;"
+                    "color:#EAB308;margin-bottom:8px'>🧪 MODO DEMO</div>", unsafe_allow_html=True)
     _card_c = c["card"]; _brd_c = c["border"]; _pri_c = c["primary"]; _txt_c = c["text"]; _m2_c = c["muted2"]
     st.markdown(
         "<div style='background:" + _card_c + ";border:1px solid " + _brd_c + ";border-radius:8px;"
