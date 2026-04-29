@@ -267,6 +267,22 @@ def clasificar_entrantes(df_inc):
     nums_excluidos={norm_num(n) for n in get_nums_excluidos()}
     try: dids_cfg = st.session_state.cfg_dids
     except: dids_cfg = DEFAULT_DIDS
+
+    def _get_did(dnis):
+        info = dids_cfg.get(str(dnis), {"pais":"Desconocido","bandera":"🌐"})
+        return info["pais"], info["bandera"]
+
+    def _append(orig_cid,detect_time,ani_cliente,atendida,agente_id,duracion,ring_total,n_intentos,end_reason,escenario,agente_timbrando=None,espera_usuario=0,dnis_marcado=""):
+        pais, bandera = _get_did(dnis_marcado)
+        resultados.append({"original_callid":orig_cid,"detect_time":detect_time,"numero_cliente":ani_cliente,"atendida":atendida,
+            "agente":get_agentes().get(str(agente_id),"Sin atender") if agente_id else "Sin atender","agente_id":agente_id,
+            "agente_timbrando":get_agentes().get(str(agente_timbrando),"—") if agente_timbrando else "—",
+            "espera_usuario":max(0,int(espera_usuario or 0)),"duracion":duracion,"espera_total":ring_total,
+            "n_intentos":n_intentos,"end_reason":end_reason,"end_reason_es":END_REASONS.get(end_reason,end_reason),
+            "escenario":escenario,"escenario_es":esc_es(escenario),
+            "dnis_marcado":dnis_marcado,"pais":pais,"bandera":bandera,
+            "hora":detect_time.hour if pd.notna(detect_time) else None,
+            "fecha":detect_time.date() if pd.notna(detect_time) else None})
     df_inc=df_inc.copy()
     for col in ["dnis_user","ani_user","original_callid","ref_callid","ani","dnis"]:
         if col in df_inc.columns: df_inc[col]=df_inc[col].astype(str).str.strip().replace({"None":"","nan":"","null":"","<NA>":""})
