@@ -710,7 +710,21 @@ with st.sidebar:
     ff = st.date_input("Hasta",        value=hoy_lima.date())
     hf = st.time_input("Hora fin",     value=datetime.strptime("23:59","%H:%M").time())
     st.markdown("---")
-    c1s,c2s = st.columns(2)
+    # ── Selector de canal ──────────────────────────────────────────────────────
+    _dids_sb = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
+    _canal_opts_sb = ["🌐 Todos"] + [
+        v["bandera"] + " " + v["pais"] for k,v in _dids_sb.items() if v.get("activo",True)
+    ]
+    _did_map_sb = {"🌐 Todos": None}
+    for _k,_v in _dids_sb.items():
+        if _v.get("activo",True): _did_map_sb[_v["bandera"]+" "+_v["pais"]] = _k
+    canal_sel_sb = st.selectbox("🌍 Canal", _canal_opts_sb,
+        index=_canal_opts_sb.index(st.session_state.canal_sel) if st.session_state.canal_sel in _canal_opts_sb else 0,
+        key="canal_sb")
+    if canal_sel_sb != st.session_state.canal_sel:
+        st.session_state.canal_sel = canal_sel_sb
+    _did_filtro_global = _did_map_sb.get(st.session_state.canal_sel)
+    st.markdown("---")
     with c1s: btn_ok  = st.button("⟳ Consultar", type="primary", use_container_width=True)
     with c2s: btn_hoy = st.button("Hoy",           use_container_width=True)
     st.markdown("---")
@@ -1029,6 +1043,11 @@ lbl    = st.session_state.label
 
 if df_ent.empty and df_sal.empty: st.warning("Sin registros para el período."); st.stop()
 
+# ── Aplicar filtro de canal antes de KPIs ──────────────────────────────────────
+_did_filtro_global = _did_map_sb.get(st.session_state.canal_sel) if not live_mode else None
+if _did_filtro_global and not df_ent.empty and "dnis_marcado" in df_ent.columns:
+    df_ent = df_ent[df_ent["dnis_marcado"] == _did_filtro_global].copy()
+
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 n_ent     = len(df_ent)
 n_ent_at  = int(df_ent["atendida"].sum())         if not df_ent.empty else 0
@@ -1078,20 +1097,10 @@ tab_ov,tab_ent,tab_sal,tab_ag,tab_tur,tab_seg,tab_cl,tab_raw_t = tabs
 
 # ── TAB 0: VISIÓN GENERAL ──────────────────────────────────────────────────────
 with tab_ov:
-    # Filtro canal en visión general
-    _dids_cfgov = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
-    _canal_opts_ov = ["🌐 Todos"] + [v["bandera"]+" "+v["pais"]+" ("+k+")" for k,v in _dids_cfgov.items() if v.get("activo",True)]
-    _did_by_ov = {"🌐 Todos": None}
-    for _k,_v in _dids_cfgov.items():
-        if _v.get("activo",True): _did_by_ov[_v["bandera"]+" "+_v["pais"]+" ("+_k+")"] = _k
-    f_canal_ov = st.radio("Filtrar por canal", _canal_opts_ov, horizontal=True, label_visibility="collapsed", key="canal_ov")
-    _did_ov = _did_by_ov.get(f_canal_ov)
-    df_ent_ov = df_ent[df_ent["dnis_marcado"]==_did_ov].copy() if _did_ov and "dnis_marcado" in df_ent.columns else df_ent.copy()
-    _n_at_ov  = int(df_ent_ov["atendida"].sum()) if not df_ent_ov.empty else 0
-    _n_per_ov = len(df_ent_ov) - _n_at_ov
-    _pct_ov   = round(_n_at_ov/len(df_ent_ov)*100) if len(df_ent_ov) else 0
-
-    r1,r2,r3 = st.columns([1.1,1.4,1.5])
+    _n_at_ov  = n_ent_at
+    _n_per_ov = n_ent_per
+    _pct_ov   = pct_at
+    df_ent_ov = df_ent  # ya filtrado por canal global
     with r1:
         fig_d = go.Figure(go.Pie(labels=["Atendidas","Perdidas"], values=[_n_at_ov, _n_per_ov],
             hole=0.7, marker=dict(colors=[c["bar_green"],c["bar_red"]], line=dict(width=0)), textinfo="none"))
@@ -1151,37 +1160,20 @@ with tab_ov:
 with tab_ent:
     if df_ent.empty: st.info("Sin llamadas entrantes.")
     else:
-        # ── Filtros ────────────────────────────────────────────────────────────
-        _dids_cfg2 = st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
-        _canal_opts2 = ["🌐 Todos"] + [
-            v["bandera"] + " " + v["pais"] + " (" + k + ")"
-            for k, v in _dids_cfg2.items() if v.get("activo", True)
-        ]
-        _did_by_label2 = {"🌐 Todos": None}
-        for _dk2, _dv2 in _dids_cfg2.items():
-            if _dv2.get("activo", True):
-                _did_by_label2[_dv2["bandera"] + " " + _dv2["pais"] + " (" + _dk2 + ")"] = _dk2
-
-        fc1,fc2,fc3,fc4,fc5 = st.columns([1.8,1,1,1,1])
+        fc1,fc2,fc3,fc4 = st.columns([2,1,1,1])
         with fc1: busq  = st.text_input("🔍 Buscar número", placeholder="519…", key="busq_ent")
-        with fc2: f_canal= st.selectbox("Canal", _canal_opts2, key="fcal_ent")
-        with fc3: f_est  = st.selectbox("Estado", ["Todos","Atendidas","Perdidas"], key="fest_ent")
-        with fc4:
+        with fc2: f_est  = st.selectbox("Estado", ["Todos","Atendidas","Perdidas"], key="fest_ent")
+        with fc3:
             esc_opts = ["Todos"] + (sorted(df_ent["escenario_es"].dropna().unique().tolist()) if "escenario_es" in df_ent.columns else [])
             f_esc = st.selectbox("Escenario", esc_opts, key="fesc_ent")
-        with fc5:
+        with fc4:
             f_ag = st.selectbox("Agente", ["Todos"]+sorted(df_ent["agente"].dropna().unique().tolist()), key="fag_ent")
-
         dv = df_ent.copy()
-        # Filtro por canal: comparación directa con dnis_marcado
-        _did_sel = _did_by_label2.get(f_canal)
-        if _did_sel and "dnis_marcado" in dv.columns:
-            dv = dv[dv["dnis_marcado"] == _did_sel]
-        if busq:         dv = dv[dv["numero_cliente"].str.contains(busq, na=False)]
+        if busq:               dv = dv[dv["numero_cliente"].str.contains(busq, na=False)]
         if f_est=="Atendidas": dv = dv[dv["atendida"]==True]
         elif f_est=="Perdidas": dv = dv[dv["atendida"]==False]
         if f_esc!="Todos" and "escenario_es" in dv.columns: dv = dv[dv["escenario_es"]==f_esc]
-        if f_ag!="Todos":  dv = dv[dv["agente"]==f_ag]
+        if f_ag!="Todos":      dv = dv[dv["agente"]==f_ag]
         cols_t = [cx for cx in ["detect_time","numero_cliente","bandera","escenario_es","agente",
                                   "agente_timbrando","espera_usuario","responsable","agente_turno",
                                   "duracion","espera_total","n_intentos"] if cx in dv.columns]
