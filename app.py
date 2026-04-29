@@ -265,6 +265,8 @@ def clasificar_entrantes(df_inc):
     if df_inc is None or df_inc.empty: return pd.DataFrame()
     CENTRAL_ID=get_central_id(); agentes_reales=set(get_agentes_sin_central().keys())
     nums_excluidos={norm_num(n) for n in get_nums_excluidos()}
+    try: dids_cfg = st.session_state.cfg_dids
+    except: dids_cfg = DEFAULT_DIDS
     df_inc=df_inc.copy()
     for col in ["dnis_user","ani_user","original_callid","ref_callid","ani","dnis"]:
         if col in df_inc.columns: df_inc[col]=df_inc[col].astype(str).str.strip().replace({"None":"","nan":"","null":"","<NA>":""})
@@ -279,7 +281,7 @@ def clasificar_entrantes(df_inc):
     ag_orig_set=set(df_ag["original_callid"].unique()) if not df_ag.empty else set()
     resultados=[]
     def _append(orig_cid,detect_time,ani_cliente,atendida,agente_id,duracion,ring_total,n_intentos,end_reason,escenario,agente_timbrando=None,espera_usuario=0,dnis_marcado=""):
-        did_info = get_did_info(dnis_marcado)
+        did_info = get_did_info(dnis_marcado, dids_cfg)
         resultados.append({"original_callid":orig_cid,"detect_time":detect_time,"numero_cliente":ani_cliente,"atendida":atendida,
             "agente":get_agentes().get(str(agente_id),"Sin atender") if agente_id else "Sin atender","agente_id":agente_id,
             "agente_timbrando":get_agentes().get(str(agente_timbrando),"—") if agente_timbrando else "—",
