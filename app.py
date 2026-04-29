@@ -214,6 +214,15 @@ def fmt_dur(s):
         return f"{m}m {sec:02d}s" if sec else f"{m}m"
     except: return "—"
 
+def fmt_dt(dt):
+    """Formatea datetime como GMT-5 (Lima). La API ya devuelve hora Lima."""
+    try:
+        if dt is None or (isinstance(dt, float) and pd.isna(dt)): return "—"
+        if isinstance(dt, str): dt = pd.to_datetime(dt, errors="coerce")
+        if pd.isna(dt): return "—"
+        return dt.strftime("%d/%m/%Y %H:%M:%S") + " GMT-5"
+    except: return str(dt)[:19] if dt else "—"
+
 def safe_mean(df, col):
     try:
         if df is None or df.empty or col not in df.columns or "atendida" not in df.columns: return 0
@@ -1083,8 +1092,12 @@ if _canal_nuevo != st.session_state.canal_sel:
 _did_filtro = _did_by_label.get(st.session_state.canal_sel)
 
 # Filtrar df_ent por DID si aplica
-if _did_filtro and not df_ent.empty and "dnis_marcado" in df_ent.columns:
-    df_ent = df_ent[df_ent["dnis_marcado"] == _did_filtro].copy()
+if _did_filtro and not df_ent.empty:
+    if "dnis_marcado" in df_ent.columns:
+        # Normalizar: comparar últimos dígitos por si hay prefijos distintos
+        _did_norm = norm_num(_did_filtro)
+        df_ent = df_ent[df_ent["dnis_marcado"].apply(norm_num) == _did_norm].copy()
+    # Si no existe columna, no filtrar (datos cacheados sin ella)
 
 if _did_filtro:
     _info_did = _dids_cfg.get(_did_filtro, {})
@@ -1185,6 +1198,7 @@ with tab_ent:
                                   "agente_timbrando","espera_usuario","responsable","agente_turno",
                                   "duracion","espera_total","n_intentos"] if cx in dv.columns]
         ds = dv[cols_t].copy()
+        if "detect_time" in ds.columns: ds["detect_time"] = ds["detect_time"].apply(fmt_dt)
         for col,fn in [("duracion",fmt_dur),("espera_total",fmt_dur),("espera_usuario",fmt_dur)]:
             if col in ds.columns: ds[col] = ds[col].apply(fn)
         ds = ds.rename(columns={"detect_time":"Fecha/Hora","numero_cliente":"Número","bandera":"Canal",
@@ -1235,6 +1249,7 @@ with tab_sal:
         dvs = df_sal[df_sal["numero_cliente"].str.contains(busq_s,na=False)].copy() if busq_s else df_sal.copy()
         cols_s = [cx for cx in ["detect_time","agente","numero_cliente","atendida","duration","end_reason_es"] if cx in dvs.columns]
         dss = dvs[cols_s].copy()
+        if "detect_time" in dss.columns: dss["detect_time"] = dss["detect_time"].apply(fmt_dt)
         if "duration" in dss.columns: dss["duration"] = dss["duration"].apply(fmt_dur)
         if "atendida" in dss.columns: dss["atendida"] = dss["atendida"].map({True:"✅ Conectada",False:"❌ No conectada"})
         dss = dss.rename(columns={"detect_time":"Fecha/Hora","agente":"Agente","numero_cliente":"Número",
@@ -1376,8 +1391,10 @@ with tab_seg:
         if f_resp!="Todos":       dcb = dcb[dcb["Responsable"]==f_resp]
         if f_cumpl=="✅ Resuelto": dcb = dcb[dcb["Cumplimiento"]==True]
         elif f_cumpl=="❌ Sin resolver": dcb = dcb[dcb["Cumplimiento"]==False]
-        st.dataframe(dcb.drop(columns=["Cumplimiento","_seg"],errors="ignore"),
-                     use_container_width=True, height=440, hide_index=True)
+        dcb_show = dcb.drop(columns=["Cumplimiento","_seg"],errors="ignore").copy()
+        if "Fecha/Hora" in dcb_show.columns:
+            dcb_show["Fecha/Hora"] = dcb_show["Fecha/Hora"].apply(fmt_dt)
+        st.dataframe(dcb_show, use_container_width=True, height=440, hide_index=True)
         st.download_button("⬇ Exportar", data=dcb.drop(columns=["_seg"],errors="ignore").to_csv(index=False).encode("utf-8-sig"),
             file_name=f"seguimiento_{hoy_lima.strftime('%Y%m%d')}.csv", mime="text/csv")
 
