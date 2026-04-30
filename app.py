@@ -705,11 +705,100 @@ if live_mode:
             "Notification.requestPermission().then(p=>{if(p==='granted')new Notification('Dashboard Central',{body:m})})};"
             "msgs.forEach(m=>sn(m));</script>",height=0)
 
-    # Llamadas activas
+    # ── Procesar llamadas activas ─────────────────────────────────────────────
     llamadas_activas=[]
     if df_live is not None and not df_live.empty:
         df_lv=df_live.copy()
+        # Limpiar campos clave
         for col in ["dnis_user","ani_user","original_callid","ref_callid","ani","dnis","connect_time","disconnect_time"]:
+            if col in df_lv.columns:
+                df_lv[col]=df_lv[col].astype(str).str.strip().replace({"None":"","nan":"","null":"","<NA>":""})
+
+        CENTRAL_ID_LV=get_central_id()
+        agentes_con_anexo_lv=set(get_agentes_con_anexo().keys())
+        dids_cfg_lv=st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
+        # DIDs de cada país (normalizados)
+        usa_dids_lv={k for k,v in dids_cfg_lv.items() if "Unidos" in v.get("pais","")}
+        nums_excluidos_lv={norm_num(n) for n in get_nums_excluidos()}
+
+        # Separar troncos y agentes
+        df_lv_trn=df_lv[df_lv["dnis_user"]==CENTRAL_ID_LV]
+        df_lv_ag =df_lv[df_lv["dnis_user"].isin(agentes_con_anexo_lv)]
+
+        # Índice: original_callid del agente → fila agente (la de mayor duración)
+        ag_by_orig={}
+        for _,row in df_lv_ag.iterrows():
+            orig=row.get("original_callid","")
+            if not orig: continue
+            if orig not in ag_by_orig or int(row.get("duration",0) or 0)>int(ag_by_orig[orig].get("duration",0) or 0):
+                ag_by_orig[orig]=row
+
+        procesados=set()
+        for _,trn in df_lv_trn.iterrows():
+            # Saltar si el tronco ya terminó
+            disc_trn=str(trn.get("disconnect_time","") or "")
+            if disc_trn not in ("","None","null","nan"): continue
+
+            trn_orig=str(trn.get("original_callid","") or "")
+            ref_cid =str(trn.get("ref_callid","") or "")
+            if trn_orig in procesados: continue
+            procesados.add(trn_orig)
+
+            # Número del cliente y DID (normalizado)
+            ani_cliente =str(trn.get("ani","-") or "-")
+            dnis_raw    =str(trn.get("dnis","-") or "-")
+            dnis_marcado=canonical_did(dnis_raw)           # normaliza 17866715462 → 7866715462
+
+            # En modo en vivo NO se excluyen números — siempre mostrar llamadas activas
+            # (la exclusión aplica solo a métricas históricas)
+            did_inf=get_did_info(dnis_marcado)
+
+            # Buscar registro del agente via ref_callid == original_callid del agente
+            ag_row=ag_by_orig.get(ref_cid)
+
+            if ag_row is not None:
+                # Saltar si el agente ya colgó
+                disc_ag=str(ag_row.get("disconnect_time","") or "")
+                if disc_ag not in ("","None","null","nan"): continue
+
+                ag_id   =str(ag_row.get("dnis_user",""))
+                ag_dur  =int(ag_row.get("duration",0) or 0)
+                ag_ct   =str(ag_row.get("connect_time","") or "")
+                ag_ring =max(0,int(ag_row.get("ring_time",0) or 0))
+                connected=ag_ct not in ("","None","null","nan")
+
+                if connected and ag_dur>0:
+                    estado="en_llamada"; duracion=ag_dur; connect_time=ag_ct
+                else:
+                    estado="timbrando";  duracion=0;      connect_time=""
+                agente_conocido=True
+            else:
+                # Sin agente aún — puede ser USA directo o cola
+                ag_id=""; ag_ring=0
+                duracion   =int(trn.get("duration",0) or 0)
+                connect_time=str(trn.get("connect_time","") or "")
+
+                if dnis_marcado in usa_dids_lv and duracion>0:
+                    # Llamada USA atendida directo (sin paso por agente en CDR)
+                    ag_id=next((k for k,v in st.session_state.cfg_agentes.items()
+                                if v.get("sin_anexo") and v.get("activo",True)), "")
+                    estado="en_llamada"; agente_conocido=True
+                else:
+                    estado="conectando"; agente_conocido=False
+
+            llamadas_activas.append({
+                "ag_id":ag_id,
+                "agente":get_agentes().get(ag_id,"Por identificar") if ag_id else "Por identificar",
+                "numero_cliente":ani_cliente,
+                "dnis_marcado":dnis_marcado,
+                "pais":did_inf["pais"],
+                "bandera":did_inf["bandera"],
+                "duracion":duracion,
+                "ring_time":ag_ring,
+                "estado":estado,
+                "connect_time":connect_time,
+                "agente_conocido":agente_conocido,
+            })_time"]:
             if col in df_lv.columns: df_lv[col]=df_lv[col].astype(str).str.strip().replace({"None":"","nan":"","null":"","<NA>":""})
         agentes_con_anexo=set(get_agentes_con_anexo().keys())
         df_lv_trn=df_lv[df_lv["dnis_user"]==CENTRAL_ID]; df_lv_ag=df_lv[df_lv["dnis_user"].isin(agentes_con_anexo)]
