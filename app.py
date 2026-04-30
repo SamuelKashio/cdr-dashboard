@@ -812,11 +812,12 @@ if live_mode:
         elif ll["estado"]=="timbrando":
             dot=YL; borde="rgba(234,179,8,.3)"
             eh="<span style='color:"+YDM+";font-size:11px;letter-spacing:1px;font-family:JetBrains Mono,monospace;animation:blink 1s infinite'>&#x1F7E1; TIMBRANDO</span>"
+            _canal_badge="<span style='background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.3);border-radius:4px;padding:2px 7px;font-size:12px;margin-left:6px'>"+ll["bandera"]+" "+ll["pais"]+"</span>"
             dh=("<div style='margin-top:10px;background:rgba(234,179,8,.07);border-radius:8px;padding:10px'>"
                 "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace'>"
                 "<span style='color:"+M2+"'>Cliente</span><span style='color:"+TX+"'>"+ll["numero_cliente"]+"</span></div>"
                 "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
-                "<span style='color:"+M2+"'>Canal</span><span style='color:"+MU+"'>"+ll["bandera"]+" "+ll["pais"]+"</span></div>"
+                "<span style='color:"+M2+"'>Canal</span><span style='color:"+TX+"'>"+ll["bandera"]+" "+ll["pais"]+"</span></div>"
                 "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
                 "<span style='color:"+M2+"'>Timbrando</span><span style='color:"+YL+"'>"+str(ll["ring_time"])+"s</span></div></div>")
         else:
@@ -842,7 +843,9 @@ if live_mode:
                 "<div style='display:flex;justify-content:space-between;align-items:flex-start'>"
                 "<div><div style='color:"+TX+";font-size:14px;font-weight:500'>"+ag_nombre+"</div>"
                 "<div style='color:"+M2+";font-size:10px;font-family:JetBrains Mono,monospace;margin-top:2px'>ID "+ag_id+"</div></div>"
-                "<div>"+eh+"</div></div>"+dh+"</div>",unsafe_allow_html=True)
+                "<div style='display:flex;flex-direction:column;align-items:flex-end;gap:4px'>"+eh
+                +(("<span style='font-size:14px'>"+ll["bandera"]+"</span>") if ll is not None else "")
+                +"</div></div>"+dh+"</div>",unsafe_allow_html=True)
 
     sin_asignar=[x for x in llamadas_activas if not x["agente_conocido"]]
     if sin_asignar:
