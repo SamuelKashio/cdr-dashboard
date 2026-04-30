@@ -669,6 +669,243 @@ if live_mode:
         _df_rec,_=fetch_cdrs(date_start=_hace6,date_end=_hasta)
         if _df_rec is not None and not _df_rec.empty:
             _df_rec_proc,_df_sal_rec,_=procesar(_df_rec)
+            _debug_info=f"CDRs últimos 6 min: {len(_df_rec)} · {len(_df_rec_proc)} entrantes"
+        else:
+            _df_rec_proc,_df_sal_rec=pd.DataFrame(),pd.DataFrame()
+            _debug_info="Sin CDRs en últimos 6 min"
+    except Exception as _ex:
+        _df_rec_proc,_df_sal_rec=pd.DataFrame(),pd.DataFrame(); _debug_info=f"Error: {_ex}"
+
+    _notif_js=[]
+    if not _df_rec_proc.empty and "escenario" in _df_rec_proc.columns:
+        for _,_row in _df_rec_proc[(_df_rec_proc["atendida"]==False)&(_df_rec_proc["escenario"].isin(ESC_RESPONSABLE))].iterrows():
+            _cid=str(_row.get("original_callid","")); _num=str(_row.get("numero_cliente","—"))
+            _esc=esc_es(_row.get("escenario","")); _resp=str(_row.get("responsable","—")); _t=_row.get("detect_time")
+            if _cid not in st.session_state.notif_ids_vistos:
+                st.session_state.notif_ids_vistos.add(_cid)
+                st.session_state.notif_sin_devolver[_cid]={"num":_num,"esc":_esc,"resp":_resp,"t":_t}
+                st.toast(f"📵 {_num} ({_esc}) · {_resp}",icon="🔔")
+                _notif_js.append(f"Llamada perdida\\n{_num}\\n{_resp}")
+        _cb=calcular_cumplimiento(_df_rec_proc,_df_sal_rec)
+        if not _cb.empty and "Cumplimiento" in _cb.columns:
+            for _,_r in _cb[_cb["Cumplimiento"]==True].iterrows():
+                _n=norm_num(str(_r.get("Número","")))
+                for _k,_v in list(st.session_state.notif_sin_devolver.items()):
+                    if norm_num(_v["num"])==_n: del st.session_state.notif_sin_devolver[_k]; break
+        _vseg=st.session_state.cfg_ventana_cb*60
+        for _cid,_info in list(st.session_state.notif_sin_devolver.items()):
+            _t=_info.get("t")
+            if _t is not None and pd.notna(_t) and (_ahora-pd.Timestamp(_t)).total_seconds()>_vseg:
+                _ak=f"a5_{_cid}"
+                if _ak not in st.session_state.notif_ids_vistos:
+                    st.session_state.notif_ids_vistos.add(_ak)
+                    st.toast(f"⚠️ Sin devolver +{st.session_state.cfg_ventana_cb}min — {_info['num']} · {_info['resp']}",icon="🚨")
+                    _notif_js.append(f"Sin devolver\\n{_info['num']}\\n{_info['resp']}")
+    if _notif_js:
+        _msgs=str(_notif_js).replace("'",'"')
+        components.html("<script>const msgs="+_msgs+";function sn(m){if(Notification.permission==='granted')"
+            "new Notification('Dashboard Central',{body:m});else if(Notification.permission!=='denied')"
+            "Notification.requestPermission().then(p=>{if(p==='granted')new Notification('Dashboard Central',{body:m})})};"
+            "msgs.forEach(m=>sn(m));</script>",height=0)
+
+    # ── Procesar llamadas activas ──────────────────────────────────────────────
+    llamadas_activas=[]
+    if df_live is not None and not df_live.empty:
+        df_lv=df_live.copy()
+        for col in ["dnis_user","ani_user","original_callid","ref_callid","ani","dnis","connect_time","disconnect_time"]:
+            if col in df_lv.columns:
+                df_lv[col]=df_lv[col].astype(str).str.strip().replace({"None":"","nan":"","null":"","<NA>":""})
+
+        agentes_con_anexo_lv=set(get_agentes_con_anexo().keys())
+        dids_cfg_lv=st.session_state.cfg_dids if "cfg_dids" in st.session_state else DEFAULT_DIDS
+        usa_dids_lv={k for k,v in dids_cfg_lv.items() if "Unidos" in v.get("pais","")}
+
+        df_lv_trn=df_lv[df_lv["dnis_user"]==CENTRAL_ID]
+        df_lv_ag =df_lv[df_lv["dnis_user"].isin(agentes_con_anexo_lv)]
+
+        ag_by_orig={}
+        for _,row in df_lv_ag.iterrows():
+            orig=row.get("original_callid","")
+            if not orig: continue
+            if orig not in ag_by_orig or int(row.get("duration",0) or 0)>int(ag_by_orig[orig].get("duration",0) or 0):
+                ag_by_orig[orig]=row
+
+        procesados=set()
+        for _,trn in df_lv_trn.iterrows():
+            disc_trn=str(trn.get("disconnect_time","") or "")
+            if disc_trn not in ("","None","null","nan"): continue
+            trn_orig=str(trn.get("original_callid","") or "")
+            ref_cid =str(trn.get("ref_callid","") or "")
+            if trn_orig in procesados: continue
+            procesados.add(trn_orig)
+
+            ani_cliente =str(trn.get("ani","-") or "-")
+            dnis_raw    =str(trn.get("dnis","-") or "-")
+            dnis_marcado=canonical_did(dnis_raw)
+            did_inf     =get_did_info(dnis_marcado)
+            # ⚠️ En modo en vivo NO se filtran números excluidos
+
+            ag_row=ag_by_orig.get(ref_cid)
+            if ag_row is not None:
+                disc_ag=str(ag_row.get("disconnect_time","") or "")
+                if disc_ag not in ("","None","null","nan"): continue
+                ag_id   =str(ag_row.get("dnis_user",""))
+                ag_dur  =int(ag_row.get("duration",0) or 0)
+                ag_ct   =str(ag_row.get("connect_time","") or "")
+                ag_ring =max(0,int(ag_row.get("ring_time",0) or 0))
+                connected=ag_ct not in ("","None","null","nan")
+                if connected and ag_dur>0:
+                    estado="en_llamada"; duracion=ag_dur; connect_time=ag_ct
+                else:
+                    estado="timbrando";  duracion=0;      connect_time=""
+                agente_conocido=True
+            else:
+                ag_id=""; ag_ring=0
+                duracion    =int(trn.get("duration",0) or 0)
+                connect_time=str(trn.get("connect_time","") or "")
+                if dnis_marcado in usa_dids_lv and duracion>0:
+                    ag_id=next((k for k,v in st.session_state.cfg_agentes.items()
+                                if v.get("sin_anexo") and v.get("activo",True)),"")
+                    estado="en_llamada"; agente_conocido=True
+                else:
+                    estado="conectando"; agente_conocido=False
+
+            llamadas_activas.append({
+                "ag_id":ag_id,
+                "agente":get_agentes().get(ag_id,"Por identificar") if ag_id else "Por identificar",
+                "numero_cliente":ani_cliente,
+                "dnis_marcado":dnis_marcado,
+                "pais":did_inf["pais"],
+                "bandera":did_inf["bandera"],
+                "duracion":duracion,
+                "ring_time":ag_ring,
+                "estado":estado,
+                "connect_time":connect_time,
+                "agente_conocido":agente_conocido,
+            })
+
+    ag_ocupados={x["ag_id"] for x in llamadas_activas if x["ag_id"]}
+    n_activas=len(llamadas_activas); n_con=sum(1 for x in llamadas_activas if x["estado"]=="en_llamada")
+    n_tim=sum(1 for x in llamadas_activas if x["estado"]=="timbrando")
+    n_lib=len(get_agentes_sin_central())-len(ag_ocupados&set(get_agentes_sin_central()))
+
+    BG=c["card"]; TX=c["text"]; M2=c["muted2"]; GR=c["green"]; YL=c["yellow"]
+    RD=c["red"]; BD=c["border"]; BD2=c["border2"]; MU=c["muted"]; M3=c["muted3"]
+    RDM=c["red_dim"]; RBD=c["red_border"]; GDM=c["green_dim"]; YDM=c["yellow_dim"]; C2=c["card2"]
+
+    demo_s="<span style='color:#EAB308;font-size:11px;background:rgba(234,179,8,.1);padding:2px 8px;border-radius:4px'>&#x1F9EA; DEMO</span>" if st.session_state.cfg_modo_demo else ""
+    st.markdown(
+        "<div style='display:flex;align-items:center;justify-content:space-between;padding:14px 18px;"
+        "background:"+BG+";border:1px solid rgba(239,68,68,.3);border-radius:12px;margin-bottom:20px'>"
+        "<div style='display:flex;align-items:center;gap:14px'>"
+        "<div style='width:10px;height:10px;border-radius:50%;background:#EF4444;animation:blink 1s infinite'></div>"
+        "<span style='color:"+TX+";font-size:17px;font-weight:300'>Monitoreo en Vivo</span>"
+        "<span style='color:"+M2+";font-size:12px;font-family:JetBrains Mono,monospace'>"+lbl+"</span>"
+        +demo_s+
+        "</div><div style='display:flex;gap:20px;font-family:JetBrains Mono,monospace;font-size:12px'>"
+        "<span style='color:"+GR+"'>"+str(n_con)+" en llamada</span>"
+        "<span style='color:"+YL+"'>"+str(n_tim)+" timbrando</span>"
+        "<span style='color:"+M2+"'>cada "+str(intervalo)+"s</span>"
+        "</div></div>",unsafe_allow_html=True)
+
+    kc1,kc2,kc3,kc4=st.columns(4)
+    kc1.metric("Llamadas activas",n_activas); kc2.metric("En conversación",n_con)
+    kc3.metric("Timbrando",n_tim);            kc4.metric("Agentes libres",n_lib)
+    st.caption(f"🔍 {_debug_info}")
+
+    if st.session_state.notif_sin_devolver:
+        def _sp(v):
+            t=v.get("t")
+            if t is None or not pd.notna(t): return 0
+            return (_ahora-pd.Timestamp(t)).total_seconds()
+        _pend=sorted([(_sp(_v),_v,_k) for _k,_v in st.session_state.notif_sin_devolver.items()],reverse=True)
+        st.markdown("<div style='background:"+RDM+";border:1px solid "+RBD+";border-radius:10px;padding:14px 18px;margin-bottom:16px'>"
+            "<div style='color:"+RD+";font-size:13px;font-weight:600;margin-bottom:10px'>&#x1F6A8; "+str(len(_pend))+" sin resolver</div>",unsafe_allow_html=True)
+        for _seg,_info,_ in _pend:
+            _col=RD if _seg>st.session_state.cfg_ventana_cb*60 else YL
+            _b="&#x26A0; +"+str(st.session_state.cfg_ventana_cb)+"MIN" if _seg>st.session_state.cfg_ventana_cb*60 else fmt_dur(int(_seg))
+            st.markdown("<div style='display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid "+BD2+"'>"
+                "<div style='font-family:JetBrains Mono,monospace'>"
+                "<span style='color:"+TX+";font-size:13px'>"+_info["num"]+"</span>"
+                "<span style='color:"+M2+";font-size:11px;margin-left:10px'>"+_info["esc"]+"</span></div>"
+                "<div style='text-align:right'><div style='color:"+_col+";font-size:12px;font-weight:600'>"+_b+"</div>"
+                "<div style='color:"+M2+";font-size:10px;font-family:JetBrains Mono,monospace'>"+_info["resp"]+"</div></div></div>",unsafe_allow_html=True)
+        st.markdown("</div>",unsafe_allow_html=True)
+
+    st.markdown("<br>",unsafe_allow_html=True)
+    st.markdown("#### &#x1F465; Estado de agentes")
+    cols_ag=st.columns(3)
+    for i,(ag_id,ag_nombre) in enumerate(get_agentes_sin_central().items()):
+        ll=next((x for x in llamadas_activas if x["ag_id"]==ag_id),None)
+        if ll is None:
+            dot=GR; borde=c["green_border"]
+            eh="<span style='color:"+GDM+";font-size:11px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>&#x1F7E2; LIBRE</span>"
+            dh="<div style='color:"+M3+";font-size:12px;margin-top:10px;font-family:JetBrains Mono,monospace'>Sin actividad</div>"
+        elif ll["estado"]=="timbrando":
+            dot=YL; borde="rgba(234,179,8,.3)"
+            eh="<span style='color:"+YDM+";font-size:11px;letter-spacing:1px;font-family:JetBrains Mono,monospace;animation:blink 1s infinite'>&#x1F7E1; TIMBRANDO</span>"
+            dh=("<div style='margin-top:10px;background:rgba(234,179,8,.07);border-radius:8px;padding:10px'>"
+                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace'>"
+                "<span style='color:"+M2+"'>Cliente</span><span style='color:"+TX+"'>"+ll["numero_cliente"]+"</span></div>"
+                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
+                "<span style='color:"+M2+"'>Canal</span><span style='color:"+TX+"'>"+ll["bandera"]+" "+ll["pais"]+"</span></div>"
+                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
+                "<span style='color:"+M2+"'>Timbrando</span><span style='color:"+YL+"'>"+str(ll["ring_time"])+"s</span></div></div>")
+        else:
+            dot=RD; borde=c["red_border"]
+            eh="<span style='color:"+RDM+";font-size:11px;letter-spacing:1px;font-family:JetBrains Mono,monospace'>&#x1F534; EN LLAMADA</span>"
+            m_,s_=divmod(ll["duracion"],60); dur_f=f"{m_}:{str(s_).zfill(2)}"
+            badge="" if ll["agente_conocido"] else "<span style='font-size:9px;color:"+YDM+";background:rgba(234,179,8,.1);padding:2px 6px;border-radius:4px'>identificando…</span>"
+            ct_div=("<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
+                    "<span style='color:"+M2+"'>Conectó</span><span style='color:"+MU+"'>"+ll["connect_time"][:16]+"</span></div>") if ll["connect_time"] else ""
+            dh=("<div style='margin-top:10px;background:rgba(239,68,68,.07);border-radius:8px;padding:10px'>"
+                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace'>"
+                "<span style='color:"+M2+"'>Cliente</span><span style='color:"+TX+"'>"+ll["numero_cliente"]+"</span></div>"
+                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
+                "<span style='color:"+M2+"'>Canal</span><span style='color:"+TX+"'>"+ll["bandera"]+" "+ll["pais"]+"</span></div>"
+                "<div style='display:flex;justify-content:space-between;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
+                "<span style='color:"+M2+"'>Duración</span><span style='color:"+RD+";font-weight:600'>"+dur_f+"</span></div>"
+                "<div style='display:flex;justify-content:space-between;align-items:center;font-size:12px;font-family:JetBrains Mono,monospace;margin-top:6px'>"
+                "<span style='color:"+M2+"'>Agente</span><span style='color:"+MU+"'>"+ll["agente"]+" "+badge+"</span></div>"
+                +ct_div+"</div>")
+        with cols_ag[i%3]:
+            st.markdown("<div style='background:"+BG+";border:1px solid "+borde+";border-top:3px solid "+dot+";"
+                "border-radius:10px;padding:16px;margin-bottom:14px'>"
+                "<div style='display:flex;justify-content:space-between;align-items:flex-start'>"
+                "<div><div style='color:"+TX+";font-size:14px;font-weight:500'>"+ag_nombre+"</div>"
+                "<div style='color:"+M2+";font-size:10px;font-family:JetBrains Mono,monospace;margin-top:2px'>ID "+ag_id+"</div></div>"
+                "<div style='display:flex;flex-direction:column;align-items:flex-end;gap:4px'>"+eh
+                +(("<span style='font-size:14px'>"+ll["bandera"]+"</span>") if ll is not None else "")
+                +"</div></div>"+dh+"</div>",unsafe_allow_html=True)
+
+    sin_asignar=[x for x in llamadas_activas if not x["agente_conocido"]]
+    if sin_asignar:
+        st.markdown("---"); st.markdown("#### &#x1F4DE; En cola / por asignar")
+        for x in sin_asignar:
+            m_,s_=divmod(x["duracion"],60); df_=f"{m_}:{str(s_).zfill(2)}" if x["duracion"]>0 else "—"
+            st.markdown("<div style='background:"+BG+";border:1px solid rgba(234,179,8,.3);"
+                "border-left:3px solid "+YL+";border-radius:10px;padding:14px 18px;margin-bottom:8px;"
+                "display:flex;justify-content:space-between;align-items:center'>"
+                "<div style='font-family:JetBrains Mono,monospace'>"
+                "<div style='color:"+TX+";font-size:14px'>"+x["bandera"]+" &#x1F4DE; "+x["numero_cliente"]+"</div>"
+                "<div style='color:"+M2+";font-size:11px;margin-top:4px'>"+x["pais"]+" · DID: "+x["dnis_marcado"]+"</div></div>"
+                "<div style='text-align:right;font-family:JetBrains Mono,monospace'>"
+                "<div style='color:"+YL+";font-size:18px;font-weight:300'>"+df_+"</div>"
+                "<div style='color:"+YDM+";font-size:10px'>identificando…</div></div></div>",unsafe_allow_html=True)
+    elif n_activas==0:
+        st.markdown("<div style='text-align:center;padding:40px;background:"+BG+";"
+            "border:1px solid "+BD+";border-radius:12px;margin-top:8px'>"
+            "<div style='font-size:36px;margin-bottom:10px'>&#x1F4F5;</div>"
+            "<div style='color:"+MU+";font-size:14px'>No hay llamadas activas</div></div>",unsafe_allow_html=True)
+    time.sleep(intervalo); st.rerun(); st.stop()
+    _ahora=now_lima()
+    _hace6=(_ahora-timedelta(minutes=6)).strftime("%Y-%m-%d %H:%M:%S")
+    _hasta=_ahora.strftime("%Y-%m-%d %H:%M:%S")
+    _debug_info=""
+    try:
+        _df_rec,_=fetch_cdrs(date_start=_hace6,date_end=_hasta)
+        if _df_rec is not None and not _df_rec.empty:
+            _df_rec_proc,_df_sal_rec,_=procesar(_df_rec)
             _debug_info=f"CDRs últimos 6 min: {len(_df_rec)} registros · {len(_df_rec_proc)} entrantes"
         else: _df_rec_proc,_df_sal_rec=pd.DataFrame(),pd.DataFrame(); _debug_info="Sin CDRs en últimos 6 min"
     except Exception as _ex: _df_rec_proc,_df_sal_rec=pd.DataFrame(),pd.DataFrame(); _debug_info=f"Error: {_ex}"
