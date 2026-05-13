@@ -1,9 +1,52 @@
-__pycache__/
-*.pyc
-*.pyo
-.env
-.venv
-venv/
+# Secrets y credenciales
 .streamlit/secrets.toml
-*.csv
+
+# Archivos de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Entorno virtual
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Archivos locales
+config.json
 *.log
+.env
+
+# Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Streamlit
+.streamlit/cache/
+.streamlit/logger/
