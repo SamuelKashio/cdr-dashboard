@@ -154,65 +154,49 @@ def get_plotly_layout(title="", colors=None, height=400):
         legend=dict(font_size=10, bgcolor="rgba(0,0,0,0)")
     )
 
-def create_gauge_chart(value, max_val, label, colors, height=300):
-    """Crea un gráfico tipo gauge/medidor"""
-    fig = go.Figure(data=[
-        go.Indicator(
-            mode="gauge+number",
-            value=value,
-            domain={"x": [0, 1], "y": [0, 1]},
-            title={"text": label, "font": {"size": 12, "color": colors["muted"]}},
-            gauge={
-                "axis": {"range": [0, max_val]},
-                "bar": {"color": colors["primary"]},
-                "steps": [
-                    {"range": [0, max_val*0.3], "color": colors["green_dim"]},
-                    {"range": [max_val*0.3, max_val*0.7], "color": colors["yellow_dim"]},
-                    {"range": [max_val*0.7, max_val], "color": colors["red_dim"]}
-                ],
-                "threshold": {
-                    "line": {"color": colors["red"], "width": 2},
-                    "thickness": 0.75,
-                    "value": max_val*0.9
-                }
-            },
-            number={"font": {"size": 20, "color": colors["text"]}}
+# ── API Functions ──────────────────────────────────────────────────────────────
+@st.cache_data(ttl=300)  # Cache por 5 minutos
+def cargar_datos_api(fecha_ini, fecha_fin):
+    """Carga datos reales de CallMyWay API"""
+    try:
+        # Ajusta esta URL según tu endpoint de CallMyWay
+        url = "https://api.callmyway.com/cdr"
+        
+        params = {
+            "from": fecha_ini.isoformat(),
+            "to": fecha_fin.isoformat(),
+            "limit": 1000
+        }
+        
+        response = requests.get(
+            url,
+            params=params,
+            auth=(_U, _P),
+            timeout=15
         )
-    ])
-    fig.update_layout(
-        **get_plotly_layout("", colors, height),
-        margin=dict(l=20, r=20, t=60, b=20)
-    )
-    return fig
-
-def create_heatmap_by_hour(df, colors, height=400):
-    """Crea un heatmap de actividad por hora"""
-    if df.empty or "detect_time" not in df.columns:
-        return None
-    
-    df_temp = df.copy()
-    df_temp["hora"] = pd.to_datetime(df_temp["detect_time"]).dt.hour
-    df_temp["dia_semana"] = pd.to_datetime(df_temp["detect_time"]).dt.day_name()
-    
-    heatmap_data = df_temp.groupby(["dia_semana", "hora"]).size().reset_index(name="cantidad")
-    
-    pivot = heatmap_data.pivot_table(index="dia_semana", columns="hora", values="cantidad", fill_value=0)
-    
-    fig = go.Figure(data=go.Heatmap(
-        z=pivot.values,
-        x=pivot.columns,
-        y=pivot.index,
-        colorscale=[[0, colors["bar_green"]], [1, colors["bar_red"]]],
-        colorbar=dict(title="Llamadas", tickfont=dict(size=9))
-    ))
-    
-    fig.update_layout(
-        **get_plotly_layout("Actividad por Hora y Día", colors, height),
-        xaxis_title="Hora del día",
-        yaxis_title="Día de la semana"
-    )
-    
-    return fig
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "cdrs" in data and data["cdrs"]:
+                df = pd.DataFrame(data["cdrs"])
+                st.success(f"✅ {len(df)} registros cargados de la API")
+                return df, True
+            else:
+                st.info("ℹ️ No hay registros en este período")
+                return pd.DataFrame(), True
+        else:
+            st.warning(f"⚠️ API respondió con código {response.status_code}")
+            return pd.DataFrame(), False
+            
+    except requests.exceptions.Timeout:
+        st.error("❌ Timeout: La API tardó demasiado en responder")
+        return pd.DataFrame(), False
+    except requests.exceptions.ConnectionError:
+        st.error("❌ Error de conexión: Verifica tu conexión a internet")
+        return pd.DataFrame(), False
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        return pd.DataFrame(), False
 
 # ── Session State Initialization ──────────────────────────────────────────────
 if "cfg_agentes" not in st.session_state:
@@ -225,6 +209,9 @@ if "cfg_agentes" not in st.session_state:
 
 if "tema" not in st.session_state:
     st.session_state.tema = "dark"
+
+if "df_actual" not in st.session_state:
+    st.session_state.df_actual = pd.DataFrame()
 
 # ── Page Config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -283,74 +270,92 @@ with st.sidebar:
     
     if st.checkbox("Editar agentes"):
         st.markdown("#### Agentes")
-        agentes_edit = st.session_state.cfg_agentes.copy()
-        for agent_id, agent_info in agentes_edit.items():
-            st.text_input(f"ID {agent_id}", agent_info["nombre"], key=f"ag_{agent_id}")
+        for agent_id, agent_info in st.session_state.cfg_agentes.items():
+            st.session_state.cfg_agentes[agent_id]["nombre"] = st.text_input(
+                f"ID {agent_id}", 
+                agent_info["nombre"], 
+                key=f"ag_{agent_id}"
+            )
         if st.button("Guardar agentes"):
-            st.session_state.cfg_agentes = agentes_edit
             save_config()
-            st.success("Agentes guardados ✓")
-    
-    if st.checkbox("Editar turnos"):
-        st.markdown("#### Turnos")
-        st.info("Feature en desarrollo")
+            st.success("✅ Agentes guardados")
     
     st.markdown("---")
     st.markdown("### ℹ️ Información")
     st.caption(f"Última actualización: {hoy_lima.strftime('%Y-%m-%d %H:%M:%S')}")
-    st.caption("Versión: 2.1 (Mejorada)")
+    st.caption("Versión: 2.1 (Mejorada con API)")
 
 # ── Main Content ───────────────────────────────────────────────────────────────
 if btn_hoy:
     dt_ini = datetime.combine(hoy_lima.date(), datetime.min.time())
     dt_fin = datetime.combine(hoy_lima.date(), datetime.max.time())
 
-# Placeholder para datos (aquí irían las llamadas a la API)
 st.markdown("---")
 
-# Sample data para demostración
-if st.session_state.cfg_modo_demo:
-    st.info("📊 Modo demostración activo")
+# ── Cargar datos ───────────────────────────────────────────────────────────────
+if btn_consultar or btn_hoy:
+    with st.spinner("⏳ Cargando datos de CallMyWay..."):
+        df_ent, api_ok = cargar_datos_api(dt_ini, dt_fin)
+        
+        if api_ok and not df_ent.empty:
+            st.session_state.df_actual = df_ent
+            usar_demo = False
+        elif api_ok and df_ent.empty:
+            usar_demo = True
+            st.info("📊 Sin datos en este período. Mostrando demostración.")
+        else:
+            usar_demo = True
+            st.warning("⚠️ Error conectando a API. Mostrando demostración.")
+else:
+    usar_demo = True
+    df_ent = st.session_state.df_actual if not st.session_state.df_actual.empty else None
+
+# ── Mostrar datos ──────────────────────────────────────────────────────────────
+if usar_demo:
+    st.info("📊 Modo demostración")
     
     # Crear datos de ejemplo
     sample_data = {
-        "numero_cliente": ["51912345678", "51987654321", "51912345678", "51912345678"],
-        "agente": ["Edwin Loyola", "Jose Luis Cahuana", "Edwin Loyola", "Sin atender"],
-        "atendida": [True, True, True, False],
+        "numero_cliente": ["51912345678", "51987654321", "51912345678", "51912345678", "51912345678"],
+        "agente": ["Edwin Loyola", "Jose Luis Cahuana", "Edwin Loyola", "Deivy Chavez", "Sin atender"],
+        "atendida": [True, True, True, True, False],
         "detect_time": [
             "2026-05-13 10:30:00",
             "2026-05-13 10:35:00",
             "2026-05-13 10:40:00",
-            "2026-05-13 10:45:00"
+            "2026-05-13 10:45:00",
+            "2026-05-13 10:50:00"
         ],
-        "duracion": [120, 180, 90, 0]
+        "duracion": [120, 180, 90, 150, 0]
     }
     df_ent = pd.DataFrame(sample_data)
-    
-    # KPIs
+
+# KPIs
+if df_ent is not None and not df_ent.empty:
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("📞 Total llamadas", len(df_ent))
     with col2:
         atendidas = int(df_ent["atendida"].sum())
-        st.metric("✅ Atendidas", atendidas, f"{round(atendidas/len(df_ent)*100)}%")
+        pct = round(atendidas/len(df_ent)*100) if len(df_ent) > 0 else 0
+        st.metric("✅ Atendidas", atendidas, f"{pct}%")
     with col3:
         perdidas = len(df_ent) - atendidas
         st.metric("❌ Perdidas", perdidas)
     with col4:
-        duracion_prom = int(df_ent[df_ent["atendida"]]["duracion"].mean())
+        duracion_prom = int(df_ent[df_ent["atendida"]]["duracion"].mean()) if len(df_ent[df_ent["atendida"]]) > 0 else 0
         st.metric("⏱️ Duración promedio", fmt_dur(duracion_prom))
     
     st.markdown("---")
     
-    # Gráficos de demostración
+    # Gráficos
     tab1, tab2, tab3 = st.tabs(["📊 Overview", "👥 Agentes", "📈 Análisis"])
     
     with tab1:
         col_gr1, col_gr2 = st.columns(2)
         
         with col_gr1:
-            # Gráfico de estado de llamadas
+            # Gráfico de estado
             estado_data = pd.DataFrame({
                 "estado": ["Atendidas", "Perdidas"],
                 "cantidad": [atendidas, perdidas]
@@ -366,62 +371,58 @@ if st.session_state.cfg_modo_demo:
         
         with col_gr2:
             # Gráfico de agentes
-            agentes_data = df_ent[df_ent["atendida"]].groupby("agente").size().reset_index(name="llamadas")
-            fig_agentes = px.bar(
-                agentes_data,
-                x="agente",
-                y="llamadas",
-                color="llamadas",
-                color_continuous_scale=[colors["bar_blue"], colors["primary"]],
-                text_auto=True
-            )
-            fig_agentes.update_layout(**get_plotly_layout("Llamadas por agente", colors, 350))
-            fig_agentes.update_traces(marker_line_width=0)
-            st.plotly_chart(fig_agentes, use_container_width=True)
+            if "agente" in df_ent.columns:
+                agentes_data = df_ent[df_ent["atendida"]].groupby("agente").size().reset_index(name="llamadas")
+                if not agentes_data.empty:
+                    fig_agentes = px.bar(
+                        agentes_data,
+                        x="agente",
+                        y="llamadas",
+                        color="llamadas",
+                        color_continuous_scale=[colors["bar_blue"], colors["primary"]],
+                        text_auto=True
+                    )
+                    fig_agentes.update_layout(**get_plotly_layout("Llamadas por agente", colors, 350))
+                    fig_agentes.update_traces(marker_line_width=0)
+                    st.plotly_chart(fig_agentes, use_container_width=True)
     
     with tab2:
         st.markdown("#### Desempeño por agente")
-        
-        agentes_stats = []
-        for agente in df_ent["agente"].unique():
-            sub = df_ent[df_ent["agente"] == agente]
-            atendidas_ag = int(sub["atendida"].sum())
-            total_ag = len(sub)
-            agentes_stats.append({
-                "Agente": agente,
-                "Total": total_ag,
-                "Atendidas": atendidas_ag,
-                "Perdidas": total_ag - atendidas_ag,
-                "% Atención": round(atendidas_ag / total_ag * 100) if total_ag else 0
-            })
-        
-        df_agentes_stats = pd.DataFrame(agentes_stats)
-        
-        fig_comp = px.bar(
-            df_agentes_stats,
-            x="Agente",
-            y=["Atendidas", "Perdidas"],
-            barmode="stack",
-            color_discrete_map={"Atendidas": colors["bar_green"], "Perdidas": colors["bar_red"]}
-        )
-        fig_comp.update_layout(**get_plotly_layout("Comparativa de agentes", colors, 400))
-        fig_comp.update_traces(marker_line_width=0)
-        st.plotly_chart(fig_comp, use_container_width=True)
-        
-        st.dataframe(df_agentes_stats, use_container_width=True, hide_index=True)
+        if "agente" in df_ent.columns:
+            agentes_stats = []
+            for agente in df_ent["agente"].unique():
+                sub = df_ent[df_ent["agente"] == agente]
+                atendidas_ag = int(sub["atendida"].sum())
+                total_ag = len(sub)
+                agentes_stats.append({
+                    "Agente": agente,
+                    "Total": total_ag,
+                    "Atendidas": atendidas_ag,
+                    "Perdidas": total_ag - atendidas_ag,
+                    "% Atención": round(atendidas_ag / total_ag * 100) if total_ag else 0
+                })
+            
+            df_agentes_stats = pd.DataFrame(agentes_stats)
+            
+            fig_comp = px.bar(
+                df_agentes_stats,
+                x="Agente",
+                y=["Atendidas", "Perdidas"],
+                barmode="stack",
+                color_discrete_map={"Atendidas": colors["bar_green"], "Perdidas": colors["bar_red"]}
+            )
+            fig_comp.update_layout(**get_plotly_layout("Comparativa de agentes", colors, 400))
+            fig_comp.update_traces(marker_line_width=0)
+            st.plotly_chart(fig_comp, use_container_width=True)
+            
+            st.dataframe(df_agentes_stats, use_container_width=True, hide_index=True)
     
     with tab3:
-        st.markdown("#### Tendencias y análisis")
-        
-        # Heatmap
-        heatmap = create_heatmap_by_hour(df_ent, colors)
-        if heatmap:
-            st.plotly_chart(heatmap, use_container_width=True)
-        
-        st.info("💡 En la versión completa se mostrarían tendencias, predicciones y análisis avanzados")
+        st.markdown("#### Análisis adicional")
+        st.info("💡 Gráficos avanzados disponibles en `graficos_avanzados.py`")
 
 else:
-    st.warning("⚠️ Configura las credenciales y conecta la API de CallMyWay")
+    st.error("❌ No hay datos para mostrar")
 
 st.markdown("---")
-st.caption(f"🔧 Central Telefónica Dashboard v2.1 | Desarrollado con Streamlit + Plotly")
+st.caption(f"🔧 Central Telefónica Dashboard v2.1 | Conectado a API CallMyWay")
